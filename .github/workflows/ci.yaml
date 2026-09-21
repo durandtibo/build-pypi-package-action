@@ -1,9 +1,11 @@
 # Tests this composite action against the fixture package in
 # test/fixtures/pkg, across Linux/macOS/Windows, plus the fixtures in
-# test/fixtures/pkg-published and test/fixtures/pkg-plain-version, which
-# exercise its failure paths (already-published version, plain version on a
-# manual run). Safe to run on every push/PR: it only builds and smoke-tests
-# throwaway packages, no publishing or signing involved.
+# test/fixtures/pkg-published, test/fixtures/pkg-plain-version,
+# test/fixtures/pkg-build-failure, and test/fixtures/pkg-custom-build-command,
+# which exercise its failure paths (already-published version, plain version
+# on a manual run, failing build command) and its build-command input. Safe
+# to run on every push/PR: it only builds and smoke-tests throwaway packages,
+# no publishing or signing involved.
 
 name: CI
 on:
@@ -70,6 +72,69 @@ jobs:
         shell: bash
         run: |
           ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
+
+  custom-build-command:
+    # build-package must invoke the command given via the build-command
+    # input instead of assuming "inv build-package".
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-custom-build-command/. .
+
+      - name: Run build-package action
+        id: build
+        uses: ./
+        with:
+          artifact-name: dist-custom-build-command
+          build-command: inv custom-build
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          test "${PACKAGE_NAME}" = "pypi-release-action-fixture" || {
+            echo "::error::unexpected package-name output: ${PACKAGE_NAME}"; exit 1;
+          }
+          test "${PACKAGE_VERSION}" = "0.0.1a1" || {
+            echo "::error::unexpected package-version output: ${PACKAGE_VERSION}"; exit 1;
+          }
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
+
+  reject-build-failure:
+    # build-package must fail closed when the build command itself errors
+    # out, before it ever gets to the metadata/publish checks.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-build-failure/. .
+
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed
+        shell: bash
+        run: |
+          test "${{ steps.build.outcome }}" = "failure" || {
+            echo "::error::expected build-package to fail when the build command errors out, got outcome=${{ steps.build.outcome }}"; exit 1;
+          }
 
   reject-already-published-version:
     # build-package must fail closed when the package name/version it built
