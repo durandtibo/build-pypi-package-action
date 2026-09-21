@@ -1,9 +1,5 @@
 name: Build PyPI package
-description: >
-  Builds a Python package (sdist + wheel) with uv/invoke, validates its
-  metadata, smoke-tests the wheel, and uploads it as the "dist" artifact.
-  Assumes the calling repo provides `make install-invoke` and
-  `inv build-package`.
+description: Builds, validates, and smoke-tests a Python package (sdist + wheel) with uv/invoke, then uploads it.
 
 inputs:
   python-version:
