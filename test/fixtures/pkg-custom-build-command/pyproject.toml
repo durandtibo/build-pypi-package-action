@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pypi-release-action-fixture"
+version = "0.0.1a1"
+description = "Throwaway fixture package with a non-default build task name, used to test that build-package honors the build-command input."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pypi_release_action_fixture"]
