@@ -115,7 +115,12 @@ runs:
     - name: Generate checksums
       shell: bash
       run: |
-        cd dist && sha256sum -- *.tar.gz *.whl > SHA256SUMS
+        cd dist
+        if command -v sha256sum >/dev/null 2>&1; then
+          sha256sum -- *.tar.gz *.whl > SHA256SUMS
+        else
+          shasum -a 256 -- *.tar.gz *.whl > SHA256SUMS
+        fi
 
     - name: Upload distribution artifacts
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # ratchet:actions/upload-artifact@v7.0.1
