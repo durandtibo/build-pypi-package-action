@@ -1,4 +1,4 @@
-# Tests the last stable release (durandtibo/build-pypi-package-action@v0.0.1) against the fixture package in
+# Tests the last stable release (durandtibo/build-pypi-package-action@v0.0.2) against the fixture package in
 # test/fixtures/pkg, across Linux/macOS/Windows, plus the fixtures in
 # test/fixtures/pkg-published, test/fixtures/pkg-plain-version,
 # test/fixtures/pkg-build-failure, and test/fixtures/pkg-custom-build-command,
@@ -48,7 +48,7 @@ jobs:
 
       - name: Run build-package action
         id: build
-        uses: durandtibo/build-pypi-package-action@v0.0.1
+        uses: durandtibo/build-pypi-package-action@v0.0.2
         with:
           artifact-name: dist-stable-${{ matrix.os }}
 
@@ -82,7 +82,7 @@ jobs:
 
       - name: Run build-package action
         id: build
-        uses: durandtibo/build-pypi-package-action@v0.0.1
+        uses: durandtibo/build-pypi-package-action@v0.0.2
         with:
           artifact-name: dist-stable-custom-build-command
           build-command: inv custom-build
@@ -118,7 +118,7 @@ jobs:
       - name: Run build-package action
         id: build
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@v0.0.1
+        uses: durandtibo/build-pypi-package-action@v0.0.2
 
       - name: Assert build-package action failed
         shell: bash
@@ -145,7 +145,7 @@ jobs:
       - name: Run build-package action
         id: build
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@v0.0.1
+        uses: durandtibo/build-pypi-package-action@v0.0.2
 
       - name: Assert build-package action failed
         shell: bash
@@ -171,7 +171,7 @@ jobs:
       - name: Run build-package action
         id: build
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@v0.0.1
+        uses: durandtibo/build-pypi-package-action@v0.0.2
 
       - name: Assert build-package action failed
         shell: bash
