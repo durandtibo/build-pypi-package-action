@@ -1,72 +1,86 @@
 # build-pypi-package-action
 
 [![CI](https://github.com/durandtibo/build-pypi-package-action/actions/workflows/ci.yaml/badge.svg)](https://github.com/durandtibo/build-pypi-package-action/actions/workflows/ci.yaml)
-[![License](https://img.shields.io/github/license/durandtibo/build-pypi-package-action)](LICENSE)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/tag/durandtibo/build-pypi-package-action?label=release)](https://github.com/durandtibo/build-pypi-package-action/tags)
 
-A composite GitHub Action that builds a Python package (sdist + wheel) with `uv`/`invoke`, validates its
-metadata, guards against publishing mistakes, smoke-tests the wheel, and uploads the distributions as a
-workflow artifact.
+A composite GitHub Action that builds a Python package (sdist + wheel), validates it, and blocks the
+workflow before a bad release can go out.
 
-It's meant to run before a PyPI publish step, so a broken or already-released package never gets that far.
+Point it at a repo with a `pyproject.toml` and an invoke build task, and it builds the distributions with
+`uv`, checks their metadata, verifies the version being built is actually safe to publish, smoke-tests the
+wheel in a clean environment, and uploads everything as a workflow artifact — ready for a publish step
+right after it.
 
-## What it does
+## Why use it
 
-1. Installs `uv` and sets up the requested Python version (`astral-sh/setup-uv`).
+Releasing a Python package to PyPI is unforgiving — you can't overwrite or delete a bad version once it's
+up. This action exists to catch the usual ways that goes wrong _before_ the publish step runs:
+
+- A `workflow_dispatch` dry run accidentally targets a real release version instead of a pre-release.
+- A tag doesn't actually match the version in `pyproject.toml`.
+- The version being built is already on PyPI (a duplicate/stale release).
+- The wheel builds but doesn't actually install or import.
+
+If any of these are true, the action fails the job and nothing gets published.
+
+## How it works
+
+1. Installs `uv` and the requested Python version ([`astral-sh/setup-uv`](https://github.com/astral-sh/setup-uv)).
 2. Installs the calling repo's task runner via `make install-invoke`.
 3. Builds the package by running `build-command` (default: `inv build-package`).
 4. Validates the built distributions' metadata with `twine check --strict`.
-5. Extracts the package name/version from `pyproject.toml` (`durandtibo/extract-pyproject-metadata-action`).
-6. On a manual (`workflow_dispatch`) run, fails if the version is a plain release version — only
-   dev/pre-release versions (e.g. `1.2.3a1`, `1.2.3.dev1`) are allowed.
-7. On a tag push (`refs/tags/vX.Y.Z`), fails if the tag doesn't match the package version.
-8. Fails if the package name/version is already published on PyPI.
-9. Smoke-tests the built wheel by installing it into a clean venv and importing it.
-10. Generates a `SHA256SUMS` checksum file for the distributions.
-11. Uploads the distributions (and checksums) as a workflow artifact.
-
-These checks exist to catch the common ways a release goes wrong: a stale/duplicate version, a manual
-dry run that accidentally targets a real release version, a tag/version mismatch, or a wheel that fails
-to install/import.
+5. Extracts the package name and version from `pyproject.toml`
+   ([`durandtibo/extract-pyproject-metadata-action`](https://github.com/durandtibo/extract-pyproject-metadata-action)).
+6. **Guard — manual runs:** on `workflow_dispatch`, fails unless the version is a dev/pre-release
+   (e.g. `1.2.3a1`, `1.2.3.dev1`). Plain release versions (`1.2.3`) must go through a tag push instead.
+7. **Guard — tag pushes:** on a `refs/tags/vX.Y.Z` push, fails unless the tag matches the package version.
+8. **Guard — duplicate releases:** fails if that package name/version is already published on PyPI.
+9. Smoke-tests the wheel by installing it into a clean venv and importing it.
+10. Generates a `SHA256SUMS` checksum file alongside the distributions.
+11. Uploads `dist/` (wheel, sdist, checksums) as a workflow artifact.
 
 ## Requirements
 
 The calling repo must provide, at its root:
 
-- `make install-invoke` — a Makefile target that installs `invoke`.
-- An invoke task matching `build-command` (default: `inv build-package`) that builds sdist + wheel into
-  `dist/`.
-- A `pyproject.toml` with `name` and `version` (or equivalent dynamic metadata resolvable by
-  `extract-pyproject-metadata-action`).
+| Requirement                             | Notes                                                               |
+| --------------------------------------- | ------------------------------------------------------------------- |
+| `make install-invoke`                   | A Makefile target that installs `invoke`.                           |
+| An invoke task matching `build-command` | Default `inv build-package`; must build sdist + wheel into `dist/`. |
+| `pyproject.toml`                        | Must resolve a `name` and `version` (static or dynamic).            |
 
-The job must also check out the repo (`actions/checkout`) before calling this action.
+The calling job must also check out the repo (`actions/checkout`) before this action runs.
 
 ## Inputs
 
-| Name             | Description                                             | Required | Default             |
-| ---------------- | ------------------------------------------------------- | -------- | ------------------- |
-| `python-version` | Python version used to build and smoke test the package | No       | `3.14`              |
-| `artifact-name`  | Name of the uploaded distribution artifact              | No       | `dist`              |
-| `build-command`  | Command used to build the package                       | No       | `inv build-package` |
+| Name             | Description                                              | Required | Default             |
+| ---------------- | -------------------------------------------------------- | -------- | ------------------- |
+| `python-version` | Python version used to build and smoke-test the package. | No       | `3.14`              |
+| `build-command`  | Command used to build the package.                       | No       | `inv build-package` |
+| `artifact-name`  | Name of the uploaded distribution artifact.              | No       | `dist`              |
 
 ## Outputs
 
-| Name              | Description                                     |
-| ----------------- | ----------------------------------------------- |
-| `package-name`    | Package name extracted from `pyproject.toml`    |
-| `package-version` | Package version extracted from `pyproject.toml` |
+| Name              | Description                                      |
+| ----------------- | ------------------------------------------------ |
+| `package-name`    | Package name extracted from `pyproject.toml`.    |
+| `package-version` | Package version extracted from `pyproject.toml`. |
 
 ## Usage
 
 ### Basic
 
 ```yaml
+- uses: actions/checkout@v7
+
 - name: Build package
   uses: durandtibo/build-pypi-package-action@v0.0.2
   with:
     python-version: "3.14"
 ```
 
-### Using the outputs
+### Reading the outputs
 
 ```yaml
 - name: Build package
@@ -87,10 +101,10 @@ The job must also check out the repo (`actions/checkout`) before calling this ac
     artifact-name: my-package-dist
 ```
 
-### Full release workflow
+### End-to-end release workflow
 
-A typical setup runs this action on both manual dispatch (with a pre-release version, to dry-run the
-pipeline) and on tag pushes (to publish a real release):
+Runs on both manual dispatch (dry run with a pre-release version) and tag pushes (real release), and only
+publishes on the tag push:
 
 ```yaml
 name: Release
@@ -118,4 +132,4 @@ jobs:
 
 ## License
 
-See [LICENSE](LICENSE).
+Distributed under the [BSD 3-Clause License](LICENSE).
