@@ -1,6 +1,10 @@
 name: Build PyPI package
 description: Builds, validates, and smoke-tests a Python package (sdist + wheel) with uv/invoke, then uploads it.
 
+branding:
+  icon: package
+  color: blue
+
 inputs:
   python-version:
     description: Python version used to build and smoke test the package
