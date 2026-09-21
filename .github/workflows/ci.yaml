@@ -1,0 +1,150 @@
+# Tests this composite action against the fixture package in
+# test/fixtures/pkg, across Linux/macOS/Windows, plus the fixtures in
+# test/fixtures/pkg-published and test/fixtures/pkg-plain-version, which
+# exercise its failure paths (already-published version, plain version on a
+# manual run). Safe to run on every push/PR: it only builds and smoke-tests
+# throwaway packages, no publishing or signing involved.
+
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  config:
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    outputs:
+      os_all: ${{ steps.cfg.outputs.os_all }}
+    steps:
+      - name: Load workflow config
+        uses: durandtibo/workflow-config-action@6a12598cf8ab42549b10a25432394dd826bffa59 # ratchet:durandtibo/workflow-config-action@v0.1
+        id: cfg
+
+  build:
+    needs: config
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.config.outputs.os_all) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      # The build-package action assumes the package it builds lives at the
+      # repo root (pyproject.toml, Makefile, tasks.py), so stage the fixture
+      # there for the duration of this job.
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg/. .
+
+      - name: Run build-package action
+        id: build
+        uses: ./
+        with:
+          artifact-name: dist-${{ matrix.os }}
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          test "${PACKAGE_NAME}" = "pypi-release-action-fixture" || {
+            echo "::error::unexpected package-name output: ${PACKAGE_NAME}"; exit 1;
+          }
+          test "${PACKAGE_VERSION}" = "0.0.1a1" || {
+            echo "::error::unexpected package-version output: ${PACKAGE_VERSION}"; exit 1;
+          }
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
+
+  reject-already-published-version:
+    # build-package must fail closed when the package name/version it built
+    # is already published on PyPI, regardless of how it was triggered.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      # This fixture claims to be "requests" 2.31.0, a name/version already
+      # published on PyPI, so the action's "already published" check should
+      # reject it before it ever gets to the smoke test.
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-published/. .
+
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed
+        shell: bash
+        run: |
+          test "${{ steps.build.outcome }}" = "failure" || {
+            echo "::error::expected build-package to fail on an already-published version, got outcome=${{ steps.build.outcome }}"; exit 1;
+          }
+
+  reject-plain-version-on-manual-run:
+    # build-package must reject workflow_dispatch runs that target a plain
+    # release version instead of a dev/pre-release one. This check is only
+    # exercised when this workflow is dispatched manually.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-plain-version/. .
+
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed
+        shell: bash
+        run: |
+          test "${{ steps.build.outcome }}" = "failure" || {
+            echo "::error::expected build-package to fail on a manual run with a plain release version, got outcome=${{ steps.build.outcome }}"; exit 1;
+          }
+
+  verify-artifact:
+    needs: [config, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.config.outputs.os_all) }}
+    # Verification just inspects already-built, OS-independent files
+    # (wheel/sdist/checksums), so one runner is enough regardless of which
+    # OS produced each artifact.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # ratchet:actions/download-artifact@v8.0.1
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist/
+
+      - name: Assert dist artifact contains the expected files
+        run: |
+          ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
+          cd dist && sha256sum --check SHA256SUMS
