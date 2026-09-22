@@ -48,7 +48,7 @@ jobs:
 
       - name: Run build-package action
         id: build
-        uses: durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
         with:
           artifact-name: dist-stable-${{ matrix.os }}
 
@@ -82,7 +82,7 @@ jobs:
 
       - name: Run build-package action
         id: build
-        uses: durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
         with:
           artifact-name: dist-stable-custom-build-command
           build-command: inv custom-build
@@ -118,7 +118,7 @@ jobs:
       - name: Run build-package action
         id: build
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
 
       - name: Assert build-package action failed
         shell: bash
@@ -145,7 +145,7 @@ jobs:
       - name: Run build-package action
         id: build
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
 
       - name: Assert build-package action failed
         shell: bash
@@ -171,7 +171,7 @@ jobs:
       - name: Run build-package action
         id: build
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
 
       - name: Assert build-package action failed
         shell: bash
