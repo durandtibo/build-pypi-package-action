@@ -24,7 +24,11 @@ install-invoke: install-uv
 .PHONY: install-invoke-tasklib
 install-invoke-tasklib: install-uv
 	@echo "📦 Installing invoke-tasklib..."
-	uv pip install "invoke-tasklib>=0.0.2"
+	@if [ -n "$$VIRTUAL_ENV" ] || [ -d ".venv" ]; then \
+		uv pip install "invoke-tasklib>=0.0.6"; \
+	else \
+		uv pip install --system "invoke-tasklib>=0.0.6"; \
+	fi
 	@echo "✅ invoke-tasklib installed"
 
 .PHONY: update-uv
