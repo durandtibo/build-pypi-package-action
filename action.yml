@@ -41,7 +41,7 @@ runs:
     - name: Install invoke
       shell: bash
       run: |
-        make install-invoke-tasklib
+        make install-invoke
 
     - name: Build package
       shell: bash
