@@ -22,10 +22,10 @@ inputs:
 outputs:
   package-name:
     description: Name field of the built wheel's metadata
-    value: ${{ steps.metadata.outputs.name }}
+    value: ${{ steps.inspect.outputs.name }}
   package-version:
     description: Normalized version of the built wheel
-    value: ${{ steps.metadata.outputs.version }}
+    value: ${{ steps.inspect.outputs.version }}
   # Diagnostic: id of the check that failed, empty on success. Only one step can
   # fail, so at most one of these is set.
   failed-check:
@@ -92,33 +92,28 @@ runs:
             "Found ${#wheels[@]} wheel(s) and ${#sdists[@]} sdist(s); dist/ holds: ${files[*]:-nothing}. Exactly one of each is required." \
             "Check [build-system] and that no other step writes to dist/."
 
-    # twine and its dependencies are pinned: twine@x.y.z fixes twine itself and
-    # --exclude-newer fixes what its dependencies (requests, readme-renderer, ...)
-    # resolve to, so twine check is reproducible. The flag is scoped to twine: it
-    # must not restrict the package's own build requirements. Bump the version and
-    # the date with the quarterly review (see CLAUDE.md).
-    - name: 1.3 Check package metadata
-      id: twine
+    # Facts only, no verdict: every later check of 1.x reads these outputs, so the
+    # wheel and the sdist are opened once. Name and version come from the wheel
+    # that will be uploaded, not from a second parser of pyproject.toml, so static
+    # and dynamic versions behave alike.
+    #   canonical-name  PEP 503 form, used for the PyPI lookup
+    #   missing         required metadata fields the wheel lacks
+    #   sdist-*         name and version of the sdist (PKG-INFO)
+    #   unwanted        files that must never ship (secrets, VCS data, caches);
+    #                   example files such as .env.example are allowed
+    #   module          import name: top_level.txt if present, else the first
+    #                   top-level package (directory with __init__.py), else the
+    #                   first top-level .py file, else "-"
+    # Names are sanitized (no newline) so a file name cannot forge an output line.
+    - name: 1.3 Inspect distributions
+      id: inspect
       shell: bash
       run: |
-        source "${RUNNER_TEMP}/fail.sh"
-        uvx --exclude-newer 2026-11-01 twine@7.0.0 check --strict dist/* ||
-          fail twine "Invalid package metadata" \
-            "twine check --strict rejected the metadata (output above); PyPI would reject or misrender it." \
-            "Fix the readme, description or classifiers named above; run uvx twine check --strict dist/* locally."
-
-    # Name and version come from the wheel that will be uploaded, not from a
-    # second parser of pyproject.toml, so static and dynamic versions behave alike.
-    # canonical-name is the PEP 503 form used for the PyPI lookup. module is the
-    # import name: top_level.txt if present, else the first top-level package
-    # (directory with __init__.py), else the first top-level .py file, else "-".
-    - name: 1.4 Read package metadata
-      id: metadata
-      shell: bash
-      run: |
-        read -r name version canonical module < <(uv run --no-project python -I - dist/*.whl <<'PY' | tr -d '\r'
-        import re, sys, zipfile
+        uv run --no-project python -I - dist/*.whl dist/*.tar.gz <<'PY' | tr -d '\r' >> "$GITHUB_OUTPUT"
+        import re, sys, tarfile, zipfile
         from email.parser import Parser
+        BAD = re.compile(r"(^|/)(\.env(\.(?!example$|sample$|template$)[^/]*)?|\.git|\.pypirc|id_(rsa|ed25519)|[^/]*\.pem|__pycache__|\.DS_Store)(/|$)|\.pyc$")
+        canon = lambda n: re.sub(r"[-_.]+", "-", n).lower()
         with zipfile.ZipFile(sys.argv[1]) as z:
             names = sorted(z.namelist())
             meta = Parser().parsestr(z.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode())
@@ -126,75 +121,62 @@ runs:
             pkgs = [n.split("/")[0] for n in names if n.count("/") == 1 and n.endswith("/__init__.py")]
             mods = [n[:-3] for n in names if "/" not in n and n.endswith(".py")]
             found = (z.read(top).decode().split() if top else []) + pkgs + mods
-        print(meta["Name"], meta["Version"], re.sub(r"[-_.]+", "-", meta["Name"]).lower(), found[0] if found else "-")
+        with tarfile.open(sys.argv[2]) as t:
+            sdist = t.getnames()
+            info = next(m for m in t.getmembers() if m.name.count("/") == 1 and m.name.endswith("/PKG-INFO"))
+            smeta = Parser().parsestr(t.extractfile(info).read().decode())
+        clean = lambda n: n.replace("\n", "?")
+        print(f"name={meta['Name']}\nversion={meta['Version']}\ncanonical-name={canon(meta['Name'])}")
+        print("missing=" + ",".join(k for k in ("Summary", "Requires-Python") if not meta[k]))
+        print(f"sdist-canonical-name={canon(smeta['Name'])}\nsdist-version={smeta['Version']}")
+        print("unwanted=" + ",".join(sorted({clean(n) for n in names + sdist if BAD.search(n)})))
+        print(f"module={found[0] if found else '-'}")
         PY
-        )
-        { echo "name=${name}"; echo "version=${version}"; echo "canonical-name=${canonical}"; echo "module=${module}"; } >> "$GITHUB_OUTPUT"
 
     # Metadata PyPI and installers rely on: without Requires-Python pip installs the
     # package on Python versions it does not support; without Summary the project
     # page is blank.
-    - name: 1.5 Check required metadata fields
+    - name: 1.4 Check required metadata fields
       id: metadata-fields
       shell: bash
+      env:
+        MISSING: ${{ steps.inspect.outputs.missing }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
-        missing=$(uv run --no-project python -I - dist/*.whl <<'PY' | tr -d '\r'
-        import sys, zipfile
-        from email.parser import Parser
-        with zipfile.ZipFile(sys.argv[1]) as z:
-            meta = Parser().parsestr(z.read(next(n for n in z.namelist() if n.endswith(".dist-info/METADATA"))).decode())
-        print(*[k for k in ("Summary", "Requires-Python") if not meta[k]])
-        PY
-        )
-        [[ -z "${missing}" ]] ||
-          fail metadata-fields "Required metadata missing" "The wheel has no: ${missing}." \
+        [[ -z "${MISSING}" ]] ||
+          fail metadata-fields "Required metadata missing" "The wheel has no: ${MISSING//,/, }." \
             "Set description and requires-python in [project] of pyproject.toml."
 
     # The wheel and the sdist must describe the same release; a mismatch means a
     # backend that rewrites the name or version differently per format.
-    - name: 1.6 Check wheel and sdist agree
+    - name: 1.5 Check wheel and sdist agree
       id: artifact-mismatch
       shell: bash
       env:
-        NAME: ${{ steps.metadata.outputs.canonical-name }}
-        VERSION: ${{ steps.metadata.outputs.version }}
+        NAME: ${{ steps.inspect.outputs.canonical-name }}
+        VERSION: ${{ steps.inspect.outputs.version }}
+        SDIST_NAME: ${{ steps.inspect.outputs.sdist-canonical-name }}
+        SDIST_VERSION: ${{ steps.inspect.outputs.sdist-version }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
-        sdist=$(uv run --no-project python -I - dist/*.tar.gz <<'PY' | tr -d '\r'
-        import re, sys, tarfile
-        from email.parser import Parser
-        with tarfile.open(sys.argv[1]) as t:
-            m = next(m for m in t.getmembers() if m.name.count("/") == 1 and m.name.endswith("/PKG-INFO"))
-            meta = Parser().parsestr(t.extractfile(m).read().decode())
-        print(re.sub(r"[-_.]+", "-", meta["Name"]).lower(), meta["Version"])
-        PY
-        )
-        [[ "${sdist}" == "${NAME} ${VERSION}" ]] ||
+        [[ "${SDIST_NAME} ${SDIST_VERSION}" == "${NAME} ${VERSION}" ]] ||
           fail artifact-mismatch "Wheel and sdist disagree" \
-            "Wheel is ${NAME} ${VERSION}, sdist is ${sdist}." \
+            "Wheel is ${NAME} ${VERSION}, sdist is ${SDIST_NAME} ${SDIST_VERSION}." \
             "Build both from the same source; check the dynamic name and version settings of the backend."
 
-    # Files that must never ship: secrets, VCS data, caches. Example files such as
-    # .env.example are allowed.
-    - name: 1.7 Check no unwanted files are packaged
+    - name: 1.6 Check no unwanted files are packaged
       id: unwanted-files
       shell: bash
+      env:
+        UNWANTED: ${{ steps.inspect.outputs.unwanted }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
-        found=$(uv run --no-project python -I - dist/*.whl dist/*.tar.gz <<'PY' | tr -d '\r'
-        import re, sys, tarfile, zipfile
-        bad = re.compile(r"(^|/)(\.env(\.(?!example$|sample$|template$)[^/]*)?|\.git|\.pypirc|id_(rsa|ed25519)|[^/]*\.pem|__pycache__|\.DS_Store)(/|$)|\.pyc$")
-        names = zipfile.ZipFile(sys.argv[1]).namelist() + tarfile.open(sys.argv[2]).getnames()
-        print(*sorted({n for n in names if bad.search(n)}))
-        PY
-        )
-        [[ -z "${found}" ]] ||
-          fail unwanted-files "Unwanted files in the package" "Found: ${found}" \
+        [[ -z "${UNWANTED}" ]] ||
+          fail unwanted-files "Unwanted files in the package" "Found: ${UNWANTED//,/, }" \
             "Exclude them in the build backend config (e.g. hatch exclude, MANIFEST.in) and rotate any leaked secret."
 
     # PyPI rejects files over 100 MiB by default; fail here instead of at upload time.
-    - name: 1.8 Check file sizes
+    - name: 1.7 Check file sizes
       id: size
       shell: bash
       run: |
@@ -208,12 +190,28 @@ runs:
 
     # A platform-specific wheel built on one runner does not cover the other
     # platforms. Warn only: compiled packages are legitimate.
-    - name: 1.9 Warn on platform-specific wheel
+    - name: 1.8 Warn on platform-specific wheel
       shell: bash
       run: |
         wheel=$(basename dist/*.whl)
         [[ "${wheel}" == *-none-any.whl ]] ||
           echo "::warning title=Platform-specific wheel::${wheel} only installs on one platform; build the other platforms separately."
+
+    # Last of 1.x: it needs a download, so the cheap local checks fail first.
+    # twine and its dependencies are pinned: twine@x.y.z fixes twine itself and
+    # --exclude-newer fixes what its dependencies (requests, readme-renderer, ...)
+    # resolve to, so twine check is reproducible. The flag is scoped to twine: it
+    # must not restrict the package's own build requirements. Bump the version and
+    # the date with the quarterly review (see CLAUDE.md).
+    - name: 1.9 Check package metadata
+      id: twine
+      shell: bash
+      run: |
+        source "${RUNNER_TEMP}/fail.sh"
+        uvx --exclude-newer 2026-11-01 twine@7.0.0 check --strict dist/* ||
+          fail twine "Invalid package metadata" \
+            "twine check --strict rejected the metadata (output above); PyPI would reject or misrender it." \
+            "Fix the readme, description or classifiers named above; run uvx twine check --strict dist/* locally."
 
     # ---- 2.x Release guards -------------------------------------------------
     # PyPI rejects local versions ("1.2.3+abc"), typical of setuptools-scm on
@@ -222,7 +220,7 @@ runs:
       id: local-version
       shell: bash
       env:
-        VERSION: ${{ steps.metadata.outputs.version }}
+        VERSION: ${{ steps.inspect.outputs.version }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
         [[ "${VERSION}" != *+* ]] ||
@@ -238,7 +236,7 @@ runs:
       if: github.event_name == 'workflow_dispatch'
       shell: bash
       env:
-        VERSION: ${{ steps.metadata.outputs.version }}
+        VERSION: ${{ steps.inspect.outputs.version }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
         pattern='(a|b|rc)[0-9]+|\.dev[0-9]+'
@@ -256,7 +254,7 @@ runs:
       shell: bash
       env:
         TAG: ${{ github.ref_name }}
-        VERSION: ${{ steps.metadata.outputs.version }}
+        VERSION: ${{ steps.inspect.outputs.version }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
         [[ "${TAG}" == "v${VERSION}" ]] ||
@@ -270,8 +268,8 @@ runs:
       id: published
       shell: bash
       env:
-        NAME: ${{ steps.metadata.outputs.canonical-name }}
-        VERSION: ${{ steps.metadata.outputs.version }}
+        NAME: ${{ steps.inspect.outputs.canonical-name }}
+        VERSION: ${{ steps.inspect.outputs.version }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
         status=$(curl --silent --show-error --max-time 20 --retry 3 --output /dev/null \
@@ -292,7 +290,7 @@ runs:
       id: import
       shell: bash
       env:
-        MODULE: ${{ inputs.import-name || steps.metadata.outputs.module }}
+        MODULE: ${{ inputs.import-name || steps.inspect.outputs.module }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
         [[ "${MODULE}" != "-" ]] ||
@@ -335,7 +333,7 @@ runs:
       id: entry-points
       shell: bash
       env:
-        NAME: ${{ steps.metadata.outputs.name }}
+        NAME: ${{ steps.inspect.outputs.name }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
         uv run --isolated --no-project --with dist/*.whl -- python -I -c "import os; from importlib.metadata import distribution; [ep.load() for ep in distribution(os.environ['NAME']).entry_points]" ||
@@ -347,8 +345,8 @@ runs:
     - name: 4.1 Write job summary
       shell: bash
       env:
-        NAME: ${{ steps.metadata.outputs.name }}
-        VERSION: ${{ steps.metadata.outputs.version }}
+        NAME: ${{ steps.inspect.outputs.name }}
+        VERSION: ${{ steps.inspect.outputs.version }}
       run: |
         printf '### :white_check_mark: %s %s\n\nBuilt and checked: %s\n' \
           "${NAME}" "${VERSION}" "$(ls dist | tr '\n' ' ')" >> "$GITHUB_STEP_SUMMARY"
