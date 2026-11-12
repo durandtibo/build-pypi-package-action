@@ -76,7 +76,7 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
 **3.x Smoke tests**
 
-- `3.1` picks the module to import: the `import-name` input if set, else the one detected in `1.4`.
+- `3.1` picks the module to import: the `import-name` input if set, else the one detected in `1.3`.
   It fails if neither is available (`import`).
 - `3.2` and `3.3` install the wheel and the sdist, each into a throwaway environment, and import that
   module in isolated mode (`smoke-wheel`, `smoke-sdist`).
