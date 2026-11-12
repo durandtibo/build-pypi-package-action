@@ -1,5 +1,5 @@
 name: Build PyPI package
-description: Builds, validates, and smoke-tests a Python package (sdist + wheel) with uv/invoke, then uploads it.
+description: Builds, validates, and smoke-tests a Python package (sdist + wheel) with uv, then uploads it.
 
 branding:
   icon: package
@@ -14,10 +14,6 @@ inputs:
     description: Name of the uploaded distribution artifact
     required: false
     default: "dist"
-  build-command:
-    description: Command used to build the package
-    required: false
-    default: "inv build-package"
 
 outputs:
   package-name:
@@ -37,18 +33,25 @@ runs:
         activate-environment: true
         python-version: ${{ inputs.python-version }}
 
-    # Install invoke task runner
-    - name: Install invoke
-      shell: bash
-      run: |
-        make install-invoke
-
+    # `--clear` empties dist/ first, so stale files from a previous build can
+    # never end up in the uploaded artifact.
     - name: Build package
       shell: bash
-      env:
-        BUILD_COMMAND: ${{ inputs.build-command }}
       run: |
-        ${BUILD_COMMAND}
+        uv build --clear
+
+    # Fail closed unless exactly one sdist and one wheel were produced:
+    # checksums, the smoke test and the upload all assume that.
+    - name: Check dist contents
+      shell: bash
+      run: |
+        shopt -s nullglob
+        wheels=(dist/*.whl)
+        sdists=(dist/*.tar.gz)
+        if [[ ${#wheels[@]} -ne 1 || ${#sdists[@]} -ne 1 ]]; then
+          echo "::error::Expected exactly one wheel and one sdist in dist/, found ${#wheels[@]} wheel(s) and ${#sdists[@]} sdist(s)"
+          exit 1
+        fi
 
     - name: Check package metadata
       shell: bash
@@ -100,17 +103,23 @@ runs:
           exit 1
         fi
 
-    - name: Smoke test built wheel
+    # Install each artifact into a throwaway environment without the project
+    # and import it in isolated mode (-I), so the source tree cannot mask a
+    # broken artifact (e.g. a flat-layout package missing from the wheel).
+    - name: Smoke test built distributions
       shell: bash
       env:
         PACKAGE_NAME: ${{ steps.metadata.outputs.name }}
+        PYTHON_VERSION: ${{ inputs.python-version }}
       run: |
         # Distribution names may contain hyphens/dots (PEP 503), but the
         # importable module name uses underscores instead.
         MODULE_NAME=$(echo "${PACKAGE_NAME}" | tr '.-' '_')
-        uv venv smoke-test-venv
-        uv pip install --python smoke-test-venv dist/*.whl
-        uv run --python smoke-test-venv --no-project -- python -c "import importlib; importlib.import_module('${MODULE_NAME}')"
+        for artifact in dist/*.whl dist/*.tar.gz; do
+          echo "Smoke testing ${artifact}"
+          uv run --isolated --no-project --python "${PYTHON_VERSION}" --with "${artifact}" \
+            -- python -I -c "import importlib; importlib.import_module('${MODULE_NAME}')"
+        done
 
     - name: Generate checksums
       shell: bash

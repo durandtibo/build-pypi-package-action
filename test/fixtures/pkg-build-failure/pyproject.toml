@@ -5,9 +5,10 @@ build-backend = "hatchling.build"
 [project]
 name = "pypi-release-action-fixture"
 version = "0.0.1a1"
-description = "Throwaway fixture package whose build task always fails, used to test that build-package fails closed on a broken build command."
+description = "Throwaway fixture package whose build always fails, used to test that build-package fails closed on a broken build."
 readme = "README.md"
 requires-python = ">=3.10"
 
 [tool.hatch.build.targets.wheel]
-packages = ["pypi_release_action_fixture"]
+# Deliberately points at a package that does not exist, so `uv build` fails.
+packages = ["does_not_exist"]

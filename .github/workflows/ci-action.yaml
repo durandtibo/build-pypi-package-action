@@ -1,9 +1,9 @@
 # Workflow testing the action from the current repository code (uses: ./),
 # i.e. the version that is not released yet, on Linux, macOS, and Windows.
-# It builds the throwaway packages of test/fixtures/: the success path, a
-# custom build-command, and the failure paths (failing build command,
-# already-published version, plain version on a manual run). Safe to run on
-# every push/PR: no publishing or signing involved.
+# It builds the throwaway packages of test/fixtures/: the success path and
+# the failure paths (failing build, already-published version, plain version
+# on a manual run). Safe to run on every push/PR: no publishing or signing
+# involved.
 
 name: Test Action
 on:
@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
       # The build-package action assumes the package it builds lives at the
-      # repo root (pyproject.toml, Makefile, tasks.py), so stage the fixture
+      # repo root (pyproject.toml), so stage the fixture
       # there for the duration of this job.
       - name: Stage fixture package at repo root
         shell: bash
@@ -102,43 +102,6 @@ jobs:
           source scripts/test-helper.sh
           assert_dist_built
 
-  # build-package must invoke the command given via the build-command
-  # input instead of assuming "inv build-package".
-  custom-build-command:
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
-
-      - name: Stage fixture package at repo root
-        shell: bash
-        run: cp -r test/fixtures/pkg-custom-build-command/. .
-
-      - name: Run build-package action
-        id: build
-        uses: ./
-        with:
-          artifact-name: dist-local-custom-build-command
-          build-command: inv custom-build
-
-      - name: Assert extracted metadata matches the fixture
-        shell: bash
-        env:
-          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
-          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
-        run: |
-          source scripts/test-helper.sh
-          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
-
-      - name: Assert dist/ was built
-        shell: bash
-        run: |
-          source scripts/test-helper.sh
-          assert_dist_built
-
   # build-package must fail closed when the build command itself errors
   # out, before it ever gets to the metadata/publish checks.
   reject-build-failure:
@@ -166,7 +129,9 @@ jobs:
           OUTCOME: ${{ steps.build.outcome }}
         run: |
           source scripts/test-helper.sh
-          assert_failure "build-package (build command errors out)" "${OUTCOME}"
+          assert_failure "build-package (build errors out)" "${OUTCOME}"
+          # The build step must be the one that failed: nothing was built or checksummed
+          test ! -e dist/SHA256SUMS
 
   # build-package must fail closed when the package name/version it built
   # is already published on PyPI, regardless of how it was triggered.

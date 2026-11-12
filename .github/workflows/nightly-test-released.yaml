@@ -3,6 +3,10 @@
 # consumers pick up. It mirrors the tests of ci-action.yaml, which tests the
 # current checkout instead. Update the version in this header and in the
 # `uses:` refs below when a new version is released.
+#
+# v0.0.2 still builds through invoke (`make install-invoke`, `inv build-package`),
+# so each job also stages test/fixtures/legacy-invoke/. Remove that staging, and
+# the directory, once the released version builds with uv directly.
 
 name: Test Released Action
 on:
@@ -37,7 +41,9 @@ jobs:
       # there for the duration of this job.
       - name: Stage fixture package at repo root
         shell: bash
-        run: cp -r test/fixtures/pkg/. .
+        run: |
+          cp -r test/fixtures/pkg/. .
+          cp -r test/fixtures/legacy-invoke/. .
 
       - name: Run build-package action
         id: build
@@ -77,7 +83,9 @@ jobs:
 
       - name: Stage fixture package at repo root
         shell: bash
-        run: cp -r test/fixtures/pkg/. .
+        run: |
+          cp -r test/fixtures/pkg/. .
+          cp -r test/fixtures/legacy-invoke/. .
 
       - name: Run build-package action
         id: build
@@ -85,43 +93,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           artifact-name: dist-stable-python-${{ matrix.python-version }}
-
-      - name: Assert extracted metadata matches the fixture
-        shell: bash
-        env:
-          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
-          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
-        run: |
-          source scripts/test-helper.sh
-          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
-
-      - name: Assert dist/ was built
-        shell: bash
-        run: |
-          source scripts/test-helper.sh
-          assert_dist_built
-
-  # build-package must invoke the command given via the build-command
-  # input instead of assuming "inv build-package".
-  custom-build-command:
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
-
-      - name: Stage fixture package at repo root
-        shell: bash
-        run: cp -r test/fixtures/pkg-custom-build-command/. .
-
-      - name: Run build-package action
-        id: build
-        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
-        with:
-          artifact-name: dist-stable-custom-build-command
-          build-command: inv custom-build
 
       - name: Assert extracted metadata matches the fixture
         shell: bash
@@ -151,7 +122,9 @@ jobs:
 
       - name: Stage fixture package at repo root
         shell: bash
-        run: cp -r test/fixtures/pkg-build-failure/. .
+        run: |
+          cp -r test/fixtures/pkg-build-failure/. .
+          cp -r test/fixtures/legacy-invoke/. .
 
       # The error annotation of this step is expected: the step must fail
       - name: Run build-package action
@@ -165,7 +138,8 @@ jobs:
           OUTCOME: ${{ steps.build.outcome }}
         run: |
           source scripts/test-helper.sh
-          assert_failure "build-package (build command errors out)" "${OUTCOME}"
+          assert_failure "build-package (build errors out)" "${OUTCOME}"
+          test ! -e dist/SHA256SUMS
 
   # build-package must fail closed when the package name/version it built
   # is already published on PyPI, regardless of how it was triggered.
@@ -183,7 +157,9 @@ jobs:
       # reject it before it ever gets to the smoke test.
       - name: Stage fixture package at repo root
         shell: bash
-        run: cp -r test/fixtures/pkg-published/. .
+        run: |
+          cp -r test/fixtures/pkg-published/. .
+          cp -r test/fixtures/legacy-invoke/. .
 
       # The error annotation of this step is expected: the step must fail
       - name: Run build-package action
@@ -214,7 +190,9 @@ jobs:
 
       - name: Stage fixture package at repo root
         shell: bash
-        run: cp -r test/fixtures/pkg-plain-version/. .
+        run: |
+          cp -r test/fixtures/pkg-plain-version/. .
+          cp -r test/fixtures/legacy-invoke/. .
 
       # The error annotation of this step is expected: the step must fail
       - name: Run build-package action
