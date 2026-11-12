@@ -31,10 +31,10 @@ assert_dist_built() {
 # assert_stale_dist_cleared
 # Files placed in dist/ before the build must be gone: they must never leak into the artifact.
 assert_stale_dist_cleared() {
-	test ! -e dist/stale-0.0.0-py3-none-any.whl && test ! -e dist/stale-0.0.0.tar.gz || {
+	if test -e dist/stale-0.0.0-py3-none-any.whl || test -e dist/stale-0.0.0.tar.gz; then
 		echo "::error::stale files from a previous build are still in dist/"
 		exit 1
-	}
+	fi
 }
 
 # assert_released_dist_built
