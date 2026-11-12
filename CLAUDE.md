@@ -10,7 +10,9 @@ the wheel, writes `SHA256SUMS`, and uploads `dist/` as an artifact. It exposes t
 `package-name` and `package-version`. All logic is inline in `action.yml`; there is no separate
 script. `scripts/test-helper.sh` holds assertions shared by the test workflows, and
 `test/fixtures/` holds throwaway packages that the test workflows build. Neither is part of the
-action itself.
+action itself. `test/fixtures/legacy-invoke/` is not a package: `nightly-test-released.yaml` copies
+it next to the fixture because the released version still builds through invoke; remove it once the
+released version builds with uv directly.
 
 ## Environment
 
