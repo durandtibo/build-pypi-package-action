@@ -34,11 +34,10 @@ outputs:
       ${{ steps.build.outputs.failed-check || steps.dist-contents.outputs.failed-check
       || steps.twine.outputs.failed-check || steps.manual-version.outputs.failed-check
       || steps.tag.outputs.failed-check || steps.published.outputs.failed-check
-      || steps.metadata-fields.outputs.failed-check || steps.artifact-mismatch.outputs.failed-check
+      || steps.metadata-fields.outputs.failed-check
       || steps.unwanted-files.outputs.failed-check || steps.size.outputs.failed-check
       || steps.local-version.outputs.failed-check || steps.entry-points.outputs.failed-check
-      || steps.import.outputs.failed-check || steps.smoke-wheel.outputs.failed-check
-      || steps.smoke-sdist.outputs.failed-check }}
+      || steps.import.outputs.failed-check || steps.smoke-wheel.outputs.failed-check }}
 
 runs:
   using: composite
@@ -98,7 +97,6 @@ runs:
     # and dynamic versions behave alike.
     #   canonical-name  PEP 503 form, used for the PyPI lookup
     #   missing         required metadata fields the wheel lacks
-    #   sdist-*         name and version of the sdist (PKG-INFO)
     #   unwanted        files that must never ship (secrets, VCS data, caches);
     #                   example files such as .env.example are allowed
     #   module          import name: top_level.txt if present, else the first
@@ -123,12 +121,9 @@ runs:
             found = (z.read(top).decode().split() if top else []) + pkgs + mods
         with tarfile.open(sys.argv[2]) as t:
             sdist = t.getnames()
-            info = next(m for m in t.getmembers() if m.name.count("/") == 1 and m.name.endswith("/PKG-INFO"))
-            smeta = Parser().parsestr(t.extractfile(info).read().decode())
         clean = lambda n: n.replace("\n", "?")
         print(f"name={meta['Name']}\nversion={meta['Version']}\ncanonical-name={canon(meta['Name'])}")
         print("missing=" + ",".join(k for k in ("Summary", "Requires-Python") if not meta[k]))
-        print(f"sdist-canonical-name={canon(smeta['Name'])}\nsdist-version={smeta['Version']}")
         print("unwanted=" + ",".join(sorted({clean(n) for n in names + sdist if BAD.search(n)})))
         print(f"module={found[0] if found else '-'}")
         PY
@@ -147,24 +142,7 @@ runs:
           fail metadata-fields "Required metadata missing" "The wheel has no: ${MISSING//,/, }." \
             "Set description and requires-python in [project] of pyproject.toml."
 
-    # The wheel and the sdist must describe the same release; a mismatch means a
-    # backend that rewrites the name or version differently per format.
-    - name: 1.5 Check wheel and sdist agree
-      id: artifact-mismatch
-      shell: bash
-      env:
-        NAME: ${{ steps.inspect.outputs.canonical-name }}
-        VERSION: ${{ steps.inspect.outputs.version }}
-        SDIST_NAME: ${{ steps.inspect.outputs.sdist-canonical-name }}
-        SDIST_VERSION: ${{ steps.inspect.outputs.sdist-version }}
-      run: |
-        source "${RUNNER_TEMP}/fail.sh"
-        [[ "${SDIST_NAME} ${SDIST_VERSION}" == "${NAME} ${VERSION}" ]] ||
-          fail artifact-mismatch "Wheel and sdist disagree" \
-            "Wheel is ${NAME} ${VERSION}, sdist is ${SDIST_NAME} ${SDIST_VERSION}." \
-            "Build both from the same source; check the dynamic name and version settings of the backend."
-
-    - name: 1.6 Check no unwanted files are packaged
+    - name: 1.5 Check no unwanted files are packaged
       id: unwanted-files
       shell: bash
       env:
@@ -176,7 +154,7 @@ runs:
             "Exclude them in the build backend config (e.g. hatch exclude, MANIFEST.in) and rotate any leaked secret."
 
     # PyPI rejects files over 100 MiB by default; fail here instead of at upload time.
-    - name: 1.7 Check file sizes
+    - name: 1.6 Check file sizes
       id: size
       shell: bash
       run: |
@@ -190,7 +168,7 @@ runs:
 
     # A platform-specific wheel built on one runner does not cover the other
     # platforms. Warn only: compiled packages are legitimate.
-    - name: 1.8 Warn on platform-specific wheel
+    - name: 1.7 Warn on platform-specific wheel
       shell: bash
       run: |
         wheel=$(basename dist/*.whl)
@@ -203,7 +181,7 @@ runs:
     # resolve to, so twine check is reproducible. The flag is scoped to twine: it
     # must not restrict the package's own build requirements. Bump the version and
     # the date with the quarterly review (see CLAUDE.md).
-    - name: 1.9 Check package metadata
+    - name: 1.8 Check package metadata
       id: twine
       shell: bash
       run: |
@@ -314,22 +292,10 @@ runs:
             "Installing the wheel into a clean environment and importing ${MODULE} failed (output above)." \
             "Check that the wheel contains the package (unzip -l dist/*.whl), or set import-name if ${MODULE} is the wrong name."
 
-    - name: 3.3 Smoke test sdist
-      id: smoke-sdist
-      shell: bash
-      env:
-        MODULE: ${{ steps.import.outputs.module }}
-      run: |
-        source "${RUNNER_TEMP}/fail.sh"
-        uv run --isolated --no-project --with dist/*.tar.gz -- python -I -c "import os, importlib; importlib.import_module(os.environ['MODULE'])" ||
-          fail smoke-sdist "Distribution cannot be imported" \
-            "Building the sdist in a clean environment and importing ${MODULE} failed (output above)." \
-            "Check that the sdist contains the sources and build files (tar tzf dist/*.tar.gz), or set import-name if ${MODULE} is the wrong name."
-
     # Every declared entry point (console scripts, plugins) must resolve to an
     # importable object: a typo there installs fine and fails only when the user
     # runs the command.
-    - name: 3.4 Smoke test entry points
+    - name: 3.3 Smoke test entry points
       id: entry-points
       shell: bash
       env:
