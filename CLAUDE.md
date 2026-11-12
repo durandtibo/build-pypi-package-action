@@ -120,6 +120,9 @@ Conventions:
 - `unexpected` has no row: its only trigger is an invalid input. Check it by hand after changing step
   4.3: run the action with `python-version: "9.9"` and `continue-on-error: true` and read
   `failed-check`.
+- Every guard has a fixture row, except a closed list of review-only exceptions: `dist-contents`
+  (no sane backend writes a second wheel) and the `published` check when PyPI is down (non-404
+  answer). Add to this list only with a reason; a check no fixture can fail should not exist.
 - Every bug fix needs a regression test that fails without the fix.
 - If a check fails for a real reason, report it rather than weakening the test.
 

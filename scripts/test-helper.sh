@@ -45,6 +45,13 @@ assert_released_dist_built() {
 	ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
 }
 
+# stage_oversized_file <dir>
+# Writes 101 MiB of incompressible data into <dir>, above PyPI's 100 MiB limit,
+# so that a package that ships it is rejected by the size check.
+stage_oversized_file() {
+	head -c $((101 * 1024 * 1024)) /dev/urandom >"$1/oversized.bin"
+}
+
 # assert_failure <label> <actual-outcome>
 assert_failure() {
 	local label="$1" actual_outcome="$2"
