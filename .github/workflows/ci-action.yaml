@@ -2,7 +2,8 @@
 # i.e. the version that is not released yet, on Linux, macOS, and Windows.
 # It builds the throwaway packages of test/fixtures/: the success path (every
 # OS, every Python version), edge cases (dotted package name, dynamic version,
-# stale dist/, plain version outside manual runs) and the failure paths (failing
+# stale dist/, plain version outside manual runs, import name different from the
+# distribution name) and the failure paths (failing
 # build, invalid metadata, unimportable package, already-published version,
 # plain or post-release version on a manual run). Failure jobs also assert the
 # failed-check output, i.e. that the action failed for the expected reason.
@@ -340,6 +341,97 @@ jobs:
           test ! -e dist/stale-0.0.0-py3-none-any.whl
           test ! -e dist/stale-0.0.0.tar.gz
           assert_dist_artifact
+
+  # The import name is detected from the wheel: the module (fixture_alt) is not
+  # derived from the distribution name (pypi-release-action-fixture-alt). Without the
+  # detection the smoke test would import pypi_release_action_fixture_alt and fail.
+  import-name-detected:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-import-name/. .
+
+      - name: Run build-package action
+        id: build
+        uses: ./
+        with:
+          artifact-name: dist-local-import-name-detected
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture-alt" "0.0.1a1"
+          assert_dist_built
+
+  # An explicit import-name wins over the detection.
+  import-name-explicit:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-import-name/. .
+
+      - name: Run build-package action
+        id: build
+        uses: ./
+        with:
+          import-name: fixture_alt
+          artifact-name: dist-local-import-name-explicit
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_built
+
+  # A wrong explicit import-name must fail the smoke test: it overrides the detection.
+  reject-wrong-import-name:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-import-name/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+        with:
+          import-name: not_the_module
+
+      - name: Assert build-package action failed at the expected check
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (wrong import-name)" "${OUTCOME}"
+          assert_failed_check smoke-wheel "${FAILED_CHECK}"
 
   # The smoke test must fail closed when a package builds but cannot be imported.
   reject-import-failure:

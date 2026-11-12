@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pypi-release-action-fixture-alt"
+version = "0.0.1a1"
+description = "Throwaway fixture whose module name (fixture_alt) differs from its distribution name, used to test the import name detection of the smoke test."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fixture_alt"]
