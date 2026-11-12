@@ -60,7 +60,7 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 - `1.8` only warns about a platform-specific wheel, which one runner cannot cover for every platform.
 - `1.9` validates the metadata with `twine check --strict` (`twine`). It runs last, after the cheap
   local checks, because it needs a download. `twine` is pinned (`twine-version`), and so are its dependencies
-  (`uvx --exclude-newer`, from `twine-exclude-newer`), so the check is reproducible.
+  (`uvx --exclude-newer`) when `twine-exclude-newer` is set; it is disabled by default.
 
 **2.x Release guards**
 
@@ -125,12 +125,12 @@ The calling repo must provide, at its root:
 | `import-name`         | Module imported by the smoke test (e.g. `yaml` for `pyyaml`).                                                       | No       | resolved from the wheel |
 | `uv-version`          | Version of `uv` to install.                                                                                         | No       | `0.13.7`                |
 | `twine-version`       | Version of `twine` used by `twine check`.                                                                           | No       | `7.0.0`                 |
-| `twine-exclude-newer` | Date (`YYYY-MM-DD`) after which packages are ignored when resolving `twine` and its dependencies; empty to disable. | No       | `2026-11-01`            |
+| `twine-exclude-newer` | Date (`YYYY-MM-DD`) after which packages are ignored when resolving `twine` and its dependencies; empty to disable. | No       | `""` (disabled)         |
 
-`uv-version`, `twine-version` and `twine-exclude-newer` default to the versions this release was tested
-with, so builds are reproducible. Override them to use other versions. A `twine-version` published
-after `twine-exclude-newer` cannot be resolved: move the date forward, or set it to an empty string
-(then `twine`'s dependencies are no longer pinned).
+`uv-version` and `twine-version` default to the versions this release was tested with, so builds are
+reproducible. Override them to use other versions. `twine-exclude-newer` is empty by default, so
+`twine`'s dependencies are not pinned by date; set a date to pin them. A `twine-version` published
+after that date cannot be resolved: move the date forward or clear it.
 
 The `python-version` is used for the build and for the smoke test; the package is not tested against
 other versions, so run your own test matrix separately.

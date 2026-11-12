@@ -29,9 +29,9 @@ inputs:
   twine-exclude-newer:
     description: >-
       Date (YYYY-MM-DD) after which published packages are ignored when resolving twine and its
-      dependencies, so twine check is reproducible; empty to disable (needed for a newer twine-version)
+      dependencies, so twine check is reproducible; empty (the default) to disable
     required: false
-    default: "2026-11-01"
+    default: ""
 
 outputs:
   package-name:

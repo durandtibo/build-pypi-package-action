@@ -55,8 +55,9 @@ publish to PyPI and needs no secrets.
   check out code from forks.
 - **Least-privilege permissions**: the action needs only read access to the repository contents.
   Grant it no more in your workflow, and keep publishing credentials out of the job that builds.
-- **Pinned tools**: `uv` and `twine` are pinned by the defaults of the `uv-version`,
-  `twine-version` and `twine-exclude-newer` inputs. Overriding them is your responsibility.
+- **Pinned tools**: `uv` and `twine` are pinned by the defaults of the `uv-version` and
+  `twine-version` inputs; `twine-exclude-newer` (dependency date pin) is off by default.
+  Overriding them is your responsibility.
 - **PyPI duplicate check**: the check queries the public PyPI JSON API for the package name and
   version. Only an HTTP 404 means "not published"; any other answer fails the build.
 - **Pin the action**: reference the action by commit SHA (or a full `vX.Y.Z` tag) in your
