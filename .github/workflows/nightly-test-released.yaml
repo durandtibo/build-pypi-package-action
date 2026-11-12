@@ -139,7 +139,7 @@ jobs:
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (build errors out)" "${OUTCOME}"
-          test ! -e dist/SHA256SUMS
+          assert_failed_during_build
 
   # build-package must fail closed when the package name/version it built
   # is already published on PyPI, regardless of how it was triggered.
@@ -174,6 +174,7 @@ jobs:
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (already-published version)" "${OUTCOME}"
+          assert_failed_after_build
 
   # build-package must reject workflow_dispatch runs that target a plain
   # release version instead of a dev/pre-release one. This check is only
@@ -207,6 +208,177 @@ jobs:
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (manual run, plain release version)" "${OUTCOME}"
+          assert_failed_after_build
+
+  # A distribution name with dots/hyphens must be normalized to its module name
+  # (pypi_release_action_fixture) by the smoke test.
+  dotted-package-name:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: |
+          cp -r test/fixtures/pkg-dotted-name/. .
+          cp -r test/fixtures/legacy-invoke/. .
+
+      - name: Run build-package action
+        id: build
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        with:
+          artifact-name: dist-stable-dotted-package-name
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi.release-action.fixture" "0.0.1a1"
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_built
+
+  # A dynamic version (resolved by the build backend) must be extracted and built.
+  dynamic-version:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: |
+          cp -r test/fixtures/pkg-dynamic-version/. .
+          cp -r test/fixtures/legacy-invoke/. .
+
+      - name: Run build-package action
+        id: build
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        with:
+          artifact-name: dist-stable-dynamic-version
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_built
+
+  # The smoke test must fail closed when a package builds but cannot be imported.
+  reject-import-failure:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: |
+          cp -r test/fixtures/pkg-import-failure/. .
+          cp -r test/fixtures/legacy-invoke/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+
+      - name: Assert build-package action failed at the expected stage
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (wheel cannot be imported)" "${OUTCOME}"
+          assert_failed_after_build
+
+  # `twine check --strict` must reject distributions with invalid metadata.
+  reject-invalid-metadata:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: |
+          cp -r test/fixtures/pkg-invalid-metadata/. .
+          cp -r test/fixtures/legacy-invoke/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+
+      - name: Assert build-package action failed at the expected stage
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (metadata rejected by twine)" "${OUTCOME}"
+          assert_failed_after_build
+
+  # The pre-release requirement only applies to manual runs: a plain release
+  # version that is not on PyPI must be accepted on any other trigger.
+  accept-plain-version-outside-manual-run:
+    if: github.event_name != 'workflow_dispatch'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: |
+          cp -r test/fixtures/pkg-plain-version/. .
+          cp -r test/fixtures/legacy-invoke/. .
+
+      - name: Run build-package action
+        id: build
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        with:
+          artifact-name: dist-stable-accept-plain-version
+
+      - name: Assert plain release version was accepted
+        shell: bash
+        env:
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "pypi-release-action-fixture" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "9.9.9"
+          assert_dist_built
 
   # Verification just inspects already-built, OS-independent files
   # (wheel/sdist/checksums), so one runner is enough regardless of which

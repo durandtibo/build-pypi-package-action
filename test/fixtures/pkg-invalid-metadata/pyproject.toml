@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pypi-release-action-fixture"
+version = "0.0.1a1"
+description = "Throwaway fixture with a README that twine rejects in strict mode, used to test the metadata check."
+readme = "README.rst"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pypi_release_action_fixture"]
