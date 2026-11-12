@@ -33,13 +33,28 @@ assert_failure() {
 	}
 }
 
+# assert_failed_check <expected> <actual>
+# The action must have failed in the expected check (its failed-check output),
+# not just failed. Tests assert the id, never the message text.
+assert_failed_check() {
+	local expected="$1" actual="$2"
+
+	test "${actual}" = "${expected}" || {
+		echo "::error::expected failed-check=${expected}, got '${actual}'"
+		exit 1
+	}
+}
+
 # assert_dist_artifact
 # The downloaded artifact must hold exactly one wheel, one sdist and checksums
 # that cover exactly those two files and verify.
 assert_dist_artifact() {
 	ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
-	test "$(find dist -mindepth 1 | wc -l)" -eq 3 || {
-		echo "::error::unexpected files in dist/: $(find dist -mindepth 1)"
+	# uv writes dist/.gitignore when --out-dir is given; hidden files are not
+	# uploaded, so they are ignored here to give the local dist/ and the
+	# downloaded artifact the same expectation.
+	test "$(find dist -mindepth 1 -not -name .gitignore | wc -l)" -eq 3 || {
+		echo "::error::unexpected files in dist/: $(find dist -mindepth 1 -not -name .gitignore)"
 		exit 1
 	}
 	test "$(wc -l <dist/SHA256SUMS)" -eq 2 || {

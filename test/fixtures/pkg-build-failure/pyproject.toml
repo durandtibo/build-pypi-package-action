@@ -1,6 +1,8 @@
 [build-system]
 requires = ["hatchling"]
-build-backend = "hatchling.build"
+# Deliberately names a backend that does not exist, so `uv build` fails for every
+# version of the build tooling.
+build-backend = "does_not_exist.build"
 
 [project]
 name = "pypi-release-action-fixture"
@@ -8,7 +10,3 @@ version = "0.0.1a1"
 description = "Throwaway fixture package whose build always fails, used to test that build-package fails closed on a broken build."
 readme = "README.md"
 requires-python = ">=3.10"
-
-[tool.hatch.build.targets.wheel]
-# Deliberately points at a package that does not exist, so `uv build` fails.
-packages = ["does_not_exist"]

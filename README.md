@@ -28,29 +28,55 @@ If any of these are true, the action fails the job and nothing gets published.
 
 ## How it works
 
-1. Installs `uv` and the requested Python version ([`astral-sh/setup-uv`](https://github.com/astral-sh/setup-uv)).
-2. Builds the sdist and wheel with `uv build --clear`, and fails unless `dist/` holds exactly one of each.
-3. Validates the built distributions' metadata with `twine check --strict`.
-4. Extracts the package name and version from `pyproject.toml`
-   ([`durandtibo/extract-pyproject-metadata-action`](https://github.com/durandtibo/extract-pyproject-metadata-action)).
-5. **Guard — manual runs:** on `workflow_dispatch`, fails unless the version is a dev/pre-release
-   (e.g. `1.2.3a1`, `1.2.3.dev1`). Plain release versions (`1.2.3`) must go through a tag push instead.
-6. **Guard — tag pushes:** on any tag push (`refs/tags/*`), strips the leading `v` from the tag name and
-   fails unless the result equals the package version (`v1.2.3` ↔ `1.2.3`). A tag that does not follow
-   the `vX.Y.Z` convention therefore fails too.
-7. **Guard — duplicate releases:** queries `https://pypi.org/pypi/<name>/<version>/json` (name
-   normalized per PEP 503, 20 s timeout, 3 retries) and passes only on an HTTP 404. A 200 fails
-   because the version is already published; any other answer (network error, 429, 5xx) fails too,
-   because the check could not prove the version is free. It needs network access to PyPI and does
-   not detect versions on other indexes (e.g. TestPyPI).
-8. Smoke-tests the wheel and the sdist by installing each into a throwaway environment and importing the
-   package in isolated mode.
-9. Generates a `SHA256SUMS` checksum file alongside the distributions (`sha256sum`, or `shasum -a 256`
-   where `sha256sum` is missing).
-10. Uploads `dist/` (wheel, sdist, checksums) as a workflow artifact, kept for 5 days.
+The action is a sequence of small steps, grouped by topic and numbered `N.x` in the log. Each step
+has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
-Every step is fail-closed: the first failing check stops the job, and nothing is uploaded after it.
-The steps use `bash` and work on Linux, macOS, and Windows (Git Bash) runners.
+**0.x Setup**
+
+- `0.1` installs `uv` and the requested Python version
+  ([`astral-sh/setup-uv`](https://github.com/astral-sh/setup-uv), without cache: a release build never
+  consumes or writes one).
+- `0.2` defines the `fail` helper used by every later step.
+
+**1.x Build and package checks**
+
+- `1.1` builds the sdist and wheel into `dist/` with `uv build --clear --no-sources`, so stale files
+  and `[tool.uv.sources]` overrides cannot change what is released (`build`).
+- `1.2` fails unless `dist/` holds exactly one wheel and one sdist (`dist-contents`).
+- `1.3` validates the metadata with a pinned `twine check --strict` (`twine`).
+- `1.4` reads the package name and version from the built wheel's metadata, not from a second parser of
+  `pyproject.toml`, so static and dynamic versions behave the same and the guards check what is
+  uploaded.
+
+**2.x Release guards**
+
+- `2.1` **manual runs:** on `workflow_dispatch`, fails unless the version is a pre-release (contains
+  `aN`, `bN`, `rcN` or `.devN`, e.g. `1.2.3a1`, `1.2.3.dev1`). Final and post releases (`1.2.3`,
+  `1.2.3.post1`) must go through a tag push (`manual-version`).
+- `2.2` **tag pushes:** on any tag push (`refs/tags/*`), fails unless the tag is exactly `v` + the
+  normalized package version (`v1.2.3` for `1.2.3`; `v1.0.0-rc1` is rejected, the tag is `v1.0.0rc1`)
+  (`tag`).
+- `2.3` **duplicate releases:** queries `https://pypi.org/pypi/<name>/<version>/json` (name normalized
+  per PEP 503, 20 s timeout, 3 retries). Only an HTTP 404 passes: a 200 fails because the version is
+  published, and any other answer (network error, 429, 5xx) fails too because the check could not prove
+  the version is free. It does not detect versions on other indexes (e.g. TestPyPI) (`published`).
+
+**3.x Smoke tests**
+
+- `3.1` and `3.2` install the wheel and the sdist, each into a throwaway environment, and import the
+  package in isolated mode (`smoke-wheel`, `smoke-sdist`).
+
+**4.x Report and upload**
+
+- `4.1` generates a `SHA256SUMS` checksum file alongside the distributions (`sha256sum`, or
+  `shasum -a 256` where `sha256sum` is missing).
+- `4.2` writes the job summary; `4.3` uploads `dist/` (wheel, sdist, checksums) as a workflow
+  artifact, kept for 5 days. The upload fails if `dist/` is empty.
+
+Every step is fail-closed: the first failing check stops the job, and nothing is uploaded after it. A
+failure is reported as an annotation and in the job summary, in the form _what failed, why, how to
+fix_, with the values involved. The steps use `bash` and work on Linux, macOS, and Windows (Git Bash)
+runners.
 
 ## Requirements
 
@@ -80,13 +106,20 @@ other versions, so run your own test matrix separately.
 
 ## Outputs
 
-| Name              | Description                                      |
-| ----------------- | ------------------------------------------------ |
-| `package-name`    | Package name extracted from `pyproject.toml`.    |
-| `package-version` | Package version extracted from `pyproject.toml`. |
+| Name              | Description                                                                       |
+| ----------------- | --------------------------------------------------------------------------------- |
+| `package-name`    | `Name` field of the built wheel's metadata (exact spelling of the build backend). |
+| `package-version` | Normalized version of the built wheel.                                            |
+| `failed-check`    | Diagnostic: id of the check that failed (see below); empty on success.            |
 
-The outputs are available once the metadata has been extracted (after the build and the `twine`
-check). If an earlier step fails, the action fails and the outputs are empty.
+`package-name` and `package-version` are read from the built wheel, so they are what gets uploaded,
+and are available once step `1.4` has run. If an earlier step fails, the action fails and they are
+empty.
+
+`failed-check` is one of `build`, `dist-contents`, `twine`, `manual-version`, `tag`, `published`,
+`smoke-wheel`, `smoke-sdist`. It is meant for diagnostics and tests: the annotation and the job
+summary already say what failed and how to fix it. To read it after a failure, set
+`continue-on-error: true` on the action step.
 
 ## Usage
 
@@ -181,8 +214,8 @@ The action can only be exercised end to end on GitHub Actions; there is no local
   already-published version, and a plain version on a manual run). They are not part of the action.
 - `scripts/test-helper.sh` holds the assertions shared by the test workflows.
 - `ci-action.yaml` runs the action from the current checkout (`uses: ./`) against the fixtures on
-  Linux, macOS, and Windows, and on every Python version on Linux. Failure jobs also assert the stage
-  at which the action failed.
+  Linux, macOS, and Windows, and on every Python version on Linux. Failure jobs assert the
+  `failed-check` output, so they prove the action failed for the expected reason.
 - `nightly-test-released.yaml` runs the same tests against the last stable release.
 
 ### Workflows
