@@ -26,18 +26,11 @@ outputs:
   package-version:
     description: Normalized version of the built wheel
     value: ${{ steps.inspect.outputs.version }}
-  # Diagnostic: id of the check that failed, empty on success. Only one step can
-  # fail, so at most one of these is set.
+  # Diagnostic, set by the last step: the id passed to fail, or "unexpected" when
+  # a step outside the checks failed (setup, upload).
   failed-check:
-    description: Name of the failed check (empty on success), for diagnostics and tests
-    value: >-
-      ${{ steps.build.outputs.failed-check || steps.dist-contents.outputs.failed-check
-      || steps.twine.outputs.failed-check || steps.manual-version.outputs.failed-check
-      || steps.tag.outputs.failed-check || steps.published.outputs.failed-check
-      || steps.metadata-fields.outputs.failed-check
-      || steps.unwanted-files.outputs.failed-check || steps.size.outputs.failed-check
-      || steps.local-version.outputs.failed-check || steps.entry-points.outputs.failed-check
-      || steps.import.outputs.failed-check || steps.smoke-wheel.outputs.failed-check }}
+    description: Id of the failed check, "unexpected" if another step failed, empty on success
+    value: ${{ steps.report.outputs.failed-check }}
 
 runs:
   using: composite
@@ -55,13 +48,21 @@ runs:
 
     # Composite steps cannot share shell functions, so write the failure helper
     # once. fail <check-id> <title> <what happened and why> <how to fix>
+    # The id goes to a file read by step 4.3, so a check needs no output
+    # declaration. rm -f: a second use of the action in the same job must not
+    # read a stale id. Annotation text escapes % and line breaks (file names
+    # reach the message).
     - name: 0.2 Define failure helper
       shell: bash
       run: |
+        rm -f "${RUNNER_TEMP}/failed-check"
         cat > "${RUNNER_TEMP}/fail.sh" <<'EOF'
         fail() {
-          echo "failed-check=$1" >> "$GITHUB_OUTPUT"
-          echo "::error title=$2::$3 How to fix: $4"
+          echo "$1" > "${RUNNER_TEMP}/failed-check"
+          local msg="$3 How to fix: $4"
+          local cr=$'\r' lf=$'\n'
+          msg="${msg//%/%25}"; msg="${msg//${cr}/%0D}"; msg="${msg//${lf}/%0A}"
+          echo "::error title=$2::${msg}"
           printf '### :x: %s\n\n%s\n\n**How to fix:** %s\n' "$2" "$3" "$4" >> "$GITHUB_STEP_SUMMARY"
           exit 1
         }
@@ -71,16 +72,14 @@ runs:
     # --clear: no stale files from earlier builds. --no-sources: ignore
     # [tool.uv.sources] so the build matches what PyPI users get.
     - name: 1.1 Build package
-      id: build
       shell: bash
       run: |
         source "${RUNNER_TEMP}/fail.sh"
         uv build --clear --no-sources --out-dir dist ||
           fail build "Build failed" "uv build failed (output above); nothing was uploaded." \
-            "Run uv build locally; the error comes from the build backend, not from this action."
+            "Run uv build locally; the error comes from the build backend, or set python-version to one the package supports (requires-python)."
 
     - name: 1.2 Check dist contents
-      id: dist-contents
       shell: bash
       run: |
         source "${RUNNER_TEMP}/fail.sh"
@@ -129,7 +128,6 @@ runs:
     # package on Python versions it does not support; without Summary the project
     # page is blank.
     - name: 1.4 Check required metadata fields
-      id: metadata-fields
       shell: bash
       env:
         MISSING: ${{ steps.inspect.outputs.missing }}
@@ -168,7 +166,6 @@ runs:
         echo "module=${pick}" >> "$GITHUB_OUTPUT"
 
     - name: 1.6 Check no unwanted files are packaged
-      id: unwanted-files
       shell: bash
       env:
         UNWANTED: ${{ steps.inspect.outputs.unwanted }}
@@ -180,7 +177,6 @@ runs:
 
     # PyPI rejects files over 100 MiB by default; fail here instead of at upload time.
     - name: 1.7 Check file sizes
-      id: size
       shell: bash
       run: |
         source "${RUNNER_TEMP}/fail.sh"
@@ -207,7 +203,6 @@ runs:
     # must not restrict the package's own build requirements. Bump the version and
     # the date with the quarterly review (see CLAUDE.md).
     - name: 1.9 Check package metadata
-      id: twine
       shell: bash
       run: |
         source "${RUNNER_TEMP}/fail.sh"
@@ -220,7 +215,6 @@ runs:
     # PyPI rejects local versions ("1.2.3+abc"), typical of setuptools-scm on
     # untagged commits.
     - name: 2.1 Check version has no local segment
-      id: local-version
       shell: bash
       env:
         VERSION: ${{ steps.inspect.outputs.version }}
@@ -235,7 +229,6 @@ runs:
     # The version comes from the wheel, so it is already PEP 440 normalized.
     # The local segment (+...) is stripped first so it cannot fake a pre-release.
     - name: 2.2 Check manual run uses a pre-release version
-      id: manual-version
       if: github.event_name == 'workflow_dispatch'
       shell: bash
       env:
@@ -252,7 +245,6 @@ runs:
 
     # Rule: the tag must be exactly "v" + the normalized version.
     - name: 2.3 Check tag matches version
-      id: tag
       if: startsWith(github.ref, 'refs/tags/')
       shell: bash
       env:
@@ -268,7 +260,6 @@ runs:
     # Only a 404 proves "not published"; a 200 is a duplicate and any other
     # answer (network error -> 000, 429, 5xx) fails closed.
     - name: 2.4 Check version not already on PyPI
-      id: published
       shell: bash
       env:
         NAME: ${{ steps.inspect.outputs.canonical-name }}
@@ -292,7 +283,6 @@ runs:
     # and import it in isolated mode (-I), so the source tree cannot mask a
     # broken artifact (e.g. a flat-layout package missing from the wheel).
     - name: 3.1 Smoke test wheel
-      id: smoke-wheel
       shell: bash
       env:
         MODULE: ${{ steps.import.outputs.module }}
@@ -307,7 +297,6 @@ runs:
     # importable object: a typo there installs fine and fails only when the user
     # runs the command.
     - name: 3.2 Smoke test entry points
-      id: entry-points
       shell: bash
       env:
         NAME: ${{ steps.inspect.outputs.name }}
@@ -335,3 +324,11 @@ runs:
         path: dist/
         retention-days: 5
         if-no-files-found: error
+
+    # Last step, runs only when a step above failed. The id written by fail, or
+    # "unexpected" when the failure did not come from a check.
+    - name: 4.3 Report failed check
+      id: report
+      if: failure()
+      shell: bash
+      run: echo "failed-check=$(cat "${RUNNER_TEMP}/failed-check" 2>/dev/null || echo unexpected)" >> "$GITHUB_OUTPUT"
