@@ -50,8 +50,11 @@ assert_failed_check() {
 # that cover exactly those two files and verify.
 assert_dist_artifact() {
 	ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
-	test "$(find dist -mindepth 1 | wc -l)" -eq 3 || {
-		echo "::error::unexpected files in dist/: $(find dist -mindepth 1)"
+	# uv writes dist/.gitignore when --out-dir is given; hidden files are not
+	# uploaded, so they are ignored here to give the local dist/ and the
+	# downloaded artifact the same expectation.
+	test "$(find dist -mindepth 1 -not -name .gitignore | wc -l)" -eq 3 || {
+		echo "::error::unexpected files in dist/: $(find dist -mindepth 1 -not -name .gitignore)"
 		exit 1
 	}
 	test "$(wc -l <dist/SHA256SUMS)" -eq 2 || {
