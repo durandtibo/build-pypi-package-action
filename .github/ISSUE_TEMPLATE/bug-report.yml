@@ -1,0 +1,47 @@
+name: 🐛 Bug Report
+description: Create a report to help us reproduce and fix the bug
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        #### Before submitting a bug, please make sure the issue hasn't been already addressed by searching through [the existing and past issues](https://github.com/durandtibo/build-pypi-package-action/issues?q=is%3Aissue).
+  - type: textarea
+    attributes:
+      label: 🐛 Describe the bug
+      description: |
+        Please provide a clear and concise description of what the bug is, and what you expected instead.
+
+        If the failure comes from a workflow run, paste the relevant log lines, including the `::error::` message and the value of the `failed-check` output. Wrap logs in triple backticks.
+      placeholder: |
+        A clear and concise description of what the bug is.
+
+        ```
+        The error message you got.
+        ```
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Workflow configuration
+      description: |
+        The step that uses the action (with its inputs), and a minimal package or link to a repository/run that reproduces the problem.
+      render: yaml
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Action version
+      description: The tag or commit SHA used in `uses:`.
+      placeholder: durandtibo/build-pypi-package-action@v1
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Runner OS
+      description: The runner label (Linux, macOS, Windows) and image, if relevant.
+      placeholder: ubuntu-latest
+  - type: markdown
+    attributes:
+      value: >
+        Thanks for contributing 🎉!
