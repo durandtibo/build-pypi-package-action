@@ -151,6 +151,16 @@ jobs:
             name: pypi-release-action-fixture-alt
             version: 0.0.1a1
             import-name: fixture_alt
+          # docs/ sorts first and cannot be imported: the distribution name must win
+          - case: import-name-matches-distribution
+            fixture: pkg-multi-module
+            name: pypi-release-action-fixture-multi
+            version: 0.0.1a1
+          # _helper/ sorts first and cannot be imported: private names are skipped
+          - case: import-name-skips-private
+            fixture: pkg-private-module
+            name: pypi-release-action-fixture-private
+            version: 0.0.1a1
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
@@ -240,6 +250,9 @@ jobs:
             fixture: pkg-import-name
             expected: smoke-wheel
             import-name: not_the_module
+          - case: ambiguous-import-name
+            fixture: pkg-ambiguous-import
+            expected: import
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7

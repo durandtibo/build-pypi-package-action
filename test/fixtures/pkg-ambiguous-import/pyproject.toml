@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pypi-release-action-fixture-ambiguous"
+version = "0.0.1a1"
+description = "Throwaway fixture with two importable top-level packages, none named after the distribution, used to test that an ambiguous import name fails."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["alpha", "beta"]

@@ -56,7 +56,7 @@ released version builds with uv directly.
 - Only an HTTP 404 from PyPI means "not published"; a 200 is a duplicate and anything else fails
   closed.
 - `uv` (`version:` of `setup-uv` in step 0.1) and `twine` (`uvx --exclude-newer <date> twine@<x.y.z>`
-  in step 1.8) are pinned. `--exclude-newer` pins twine's dependencies and is scoped to twine, never
+  in step 1.9) are pinned. `--exclude-newer` pins twine's dependencies and is scoped to twine, never
   to the package's own build. Bump `uv`, `twine` and the date together, deliberately, in their own PR
   with the quarterly review. Pinning actions does not cover them.
 - The default `python-version` (`3.14`) is bumped together with the workflow config.

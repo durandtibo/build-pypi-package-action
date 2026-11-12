@@ -46,15 +46,18 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 - `1.3` opens the wheel and the sdist once and extracts facts only, no verdict: name, version, missing
   metadata fields, unwanted files, import name. The name and version come from the built wheel's
   metadata, not from a second parser of `pyproject.toml`, so static and dynamic versions behave the
-  same and the guards check what is uploaded. The import name is `top_level.txt` if the wheel has
-  one, else the first top-level package (directory with `__init__.py`), else the first top-level
-  module.
+  same and the guards check what is uploaded. It also lists the top-level packages and modules of
+  the wheel.
 - `1.4` fails if the wheel has no `Summary` or no `Requires-Python` (`metadata-fields`).
-- `1.5` fails if either file contains `.env` (not `.env.example`), `.git`, `.pypirc`, SSH keys, `.pem`
+- `1.5` resolves the module to import, never by guessing (`import`): the `import-name` input if set;
+  else the top-level names of the wheel (names starting with `_` are dropped if a public one
+  remains), where the one named like the distribution wins, else the only one. If several remain, it
+  fails and lists them.
+- `1.6` fails if either file contains `.env` (not `.env.example`), `.git`, `.pypirc`, SSH keys, `.pem`
   files, `__pycache__`, `.pyc` or `.DS_Store` (`unwanted-files`).
-- `1.6` fails if a file exceeds PyPI's default 100 MiB limit (`size`).
-- `1.7` only warns about a platform-specific wheel, which one runner cannot cover for every platform.
-- `1.8` validates the metadata with `twine check --strict` (`twine`). It runs last, after the cheap
+- `1.7` fails if a file exceeds PyPI's default 100 MiB limit (`size`).
+- `1.8` only warns about a platform-specific wheel, which one runner cannot cover for every platform.
+- `1.9` validates the metadata with `twine check --strict` (`twine`). It runs last, after the cheap
   local checks, because it needs a download. `twine` is pinned, and so are its dependencies
   (`uvx --exclude-newer <date>`), so the check is reproducible.
 
@@ -75,13 +78,11 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
 **3.x Smoke tests**
 
-- `3.1` picks the module to import: the `import-name` input if set, else the one detected in `1.3`.
-  It fails if neither is available (`import`).
-- `3.2` installs the wheel into a throwaway environment and imports that module in isolated mode
+- `3.1` installs the wheel into a throwaway environment and imports that module in isolated mode
   (`smoke-wheel`). There is no separate sdist test: `uv build` builds the wheel _from_ the sdist, so a
   wheel that imports proves the sdist is complete and builds. The sdist is still checked for unwanted
-  files (`1.5`) and size (`1.6`).
-- `3.3` loads every declared entry point (console scripts, plugins) from the installed wheel, so a typo
+  files (`1.6`) and size (`1.7`).
+- `3.2` loads every declared entry point (console scripts, plugins) from the installed wheel, so a typo
   in `[project.scripts]` fails here and not when a user runs the command (`entry-points`). An entry
   point that needs an optional dependency which is not installed fails this check too.
 
@@ -106,9 +107,9 @@ The calling repo must provide, at its root:
 
 - The calling job must check out the repo (`actions/checkout`) before this action runs.
 - The package must be buildable with `uv build` (any PEP 517 build backend). The smoke test imports
-  the module detected from the wheel; it does not have to match the distribution name (`pyyaml` →
-  `yaml`). Set `import-name` if the detection picks the wrong module (e.g. several top-level
-  packages).
+  the module resolved from the wheel (step `1.5`); it does not have to match the distribution name
+  (`pyyaml` → `yaml`). If the wheel has several top-level modules and none is named like the
+  distribution, the action fails: set `import-name`.
 - The action builds in the repo root and writes to `dist/`. Existing contents of `dist/` are removed
   first.
 - `dist/` must end up with exactly one wheel and one sdist (`.tar.gz`).
@@ -119,7 +120,7 @@ The calling repo must provide, at its root:
 | ---------------- | ------------------------------------------------------------- | -------- | ----------------------- |
 | `python-version` | Python version used to build and smoke-test the package.      | No       | `3.14`                  |
 | `artifact-name`  | Name of the uploaded distribution artifact.                   | No       | `dist`                  |
-| `import-name`    | Module imported by the smoke test (e.g. `yaml` for `pyyaml`). | No       | detected from the wheel |
+| `import-name`    | Module imported by the smoke test (e.g. `yaml` for `pyyaml`). | No       | resolved from the wheel |
 
 The `python-version` is used for the build and for the smoke test; the package is not tested against
 other versions, so run your own test matrix separately.
@@ -237,8 +238,10 @@ Breaking changes:
 - **`SHA256SUMS` is gone.** The artifact holds exactly the wheel and the sdist. If a release job needs
   checksums, compute them there.
 - **`package-name` is read from the built wheel** (the exact `Name` field), not from `pyproject.toml`.
-- **The module name no longer has to match the distribution name.** It is detected from the wheel, or
-  set with the new `import-name` input.
+- **The module name no longer has to match the distribution name.** It is resolved from the wheel, or
+  set with the new `import-name` input. The resolution fails closed: a wheel with several unrelated
+  top-level modules needs `import-name` (before, the first one was picked silently, which could
+  smoke test the wrong module).
 - **Stricter checks that can fail a build that passed before:** a missing `Summary` or
   `Requires-Python`, `.env`/key/`__pycache__` files in the package, a local version (`1.2.3+abc`), an
   entry point that cannot be loaded, a post release on a manual run, and any PyPI answer other than
