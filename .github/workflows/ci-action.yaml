@@ -4,8 +4,9 @@
 # OS, every Python version), edge cases (dotted package name, dynamic version,
 # stale dist/, plain version outside manual runs) and the failure paths (failing
 # build, invalid metadata, unimportable package, already-published version,
-# plain version on a manual run). Failure jobs also check the stage at which the
-# action failed. Safe to run on every push/PR: no publishing or signing involved.
+# plain or post-release version on a manual run). Failure jobs also assert the
+# failed-check output, i.e. that the action failed for the expected reason.
+# Safe to run on every push/PR: no publishing or signing involved.
 
 name: Test Action
 on:
@@ -129,11 +130,11 @@ jobs:
         shell: bash
         env:
           OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (build errors out)" "${OUTCOME}"
-          # The build step must be the one that failed: nothing was built or checksummed
-          test ! -e dist/SHA256SUMS
+          assert_failed_check build "${FAILED_CHECK}"
 
   # build-package must fail closed when the package name/version it built
   # is already published on PyPI, regardless of how it was triggered.
@@ -163,10 +164,11 @@ jobs:
         shell: bash
         env:
           OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (already-published version)" "${OUTCOME}"
-          assert_failed_after_build
+          assert_failed_check published "${FAILED_CHECK}"
 
   # build-package must reject workflow_dispatch runs that target a plain
   # release version instead of a dev/pre-release one. This check is only
@@ -195,10 +197,43 @@ jobs:
         shell: bash
         env:
           OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (manual run, plain release version)" "${OUTCOME}"
-          assert_failed_after_build
+          assert_failed_check manual-version "${FAILED_CHECK}"
+
+  # The manual-run guard is a whitelist: a post-release (9.9.9.post1) is not a
+  # pre-release and must be rejected too. Only exercised on manual dispatch.
+  reject-post-version-on-manual-run:
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-post-version/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (manual run, post-release version)" "${OUTCOME}"
+          assert_failed_check manual-version "${FAILED_CHECK}"
 
   # A distribution name with dots/hyphens must be normalized to its module name
   # (pypi_release_action_fixture) by the smoke test.
@@ -330,10 +365,11 @@ jobs:
         shell: bash
         env:
           OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (wheel cannot be imported)" "${OUTCOME}"
-          assert_failed_after_build
+          assert_failed_check smoke-wheel "${FAILED_CHECK}"
 
   # `twine check --strict` must reject distributions with invalid metadata.
   reject-invalid-metadata:
@@ -359,10 +395,11 @@ jobs:
         shell: bash
         env:
           OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (metadata rejected by twine)" "${OUTCOME}"
-          assert_failed_after_build
+          assert_failed_check twine "${FAILED_CHECK}"
 
   # The pre-release requirement only applies to manual runs: a plain release
   # version that is not on PyPI must be accepted on any other trigger.

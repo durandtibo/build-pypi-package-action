@@ -33,6 +33,18 @@ assert_failure() {
 	}
 }
 
+# assert_failed_check <expected> <actual>
+# The action must have failed in the expected check (its failed-check output),
+# not just failed. Tests assert the id, never the message text.
+assert_failed_check() {
+	local expected="$1" actual="$2"
+
+	test "${actual}" = "${expected}" || {
+		echo "::error::expected failed-check=${expected}, got '${actual}'"
+		exit 1
+	}
+}
+
 # assert_dist_artifact
 # The downloaded artifact must hold exactly one wheel, one sdist and checksums
 # that cover exactly those two files and verify.

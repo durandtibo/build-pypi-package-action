@@ -7,7 +7,7 @@ Guidance for coding agents working in this repository.
 A GitHub composite action (`action.yml`) that builds a Python package (sdist + wheel) with
 `uv`, validates it (`twine check --strict`, version guards, PyPI duplicate check), smoke-tests
 the wheel, writes `SHA256SUMS`, and uploads `dist/` as an artifact. It exposes the outputs
-`package-name` and `package-version`. All logic is inline in `action.yml`; there is no separate
+`package-name` and `package-version` (read from the built wheel) and the diagnostic `failed-check`. All logic is inline in `action.yml`; there is no separate
 script. `scripts/test-helper.sh` holds assertions shared by the test workflows, and
 `test/fixtures/` holds throwaway packages that the test workflows build. Neither is part of the
 action itself. `test/fixtures/legacy-invoke/` is not a package: `nightly-test-released.yaml` copies
@@ -47,6 +47,16 @@ released version builds with uv directly.
 - Keep the shell steps portable across Linux, macOS, and Windows (Git Bash) runners, e.g. the
   `sha256sum`/`shasum` fallback.
 - Add a comment above a step when its purpose is not obvious.
+- Steps are small (one purpose, one failure id, about 15 lines), named `N.x` by topic (`0.x` setup,
+  `1.x` build and package checks, `2.x` release guards, `3.x` smoke tests, `4.x` report and upload).
+  A step that can fail has an `id:` equal to its `failed-check` id, calls `fail <id> <title> <what>
+<how to fix>` (defined in step 0.2) and is listed in the `failed-check` output expression.
+  Failure messages say what failed, why, and how to fix, with the values involved.
+- Only an HTTP 404 from PyPI means "not published"; a 200 is a duplicate and anything else fails
+  closed.
+- `twine` is pinned (`uvx twine@<x.y.z>` in step 1.3). Bump it deliberately, in its own PR, with the
+  quarterly review. Pinning actions does not cover it.
+- The default `python-version` (`3.14`) is bumped together with the workflow config.
 
 ## Workflow structure (`.github/workflows/`)
 
@@ -93,7 +103,11 @@ Conventions:
 - Put assertions shared by both workflows in `scripts/test-helper.sh` so the two only differ in
   which action ref they exercise.
 - Failure-path fixtures must assert that the action fails for the expected reason, not just that
-  it fails.
+  it fails: use `assert_failed_check <id> "${FAILED_CHECK}"` with the action's `failed-check` output
+  (set `continue-on-error: true` on the action step). Assert the id, never the message text.
+- `nightly-test-released.yaml` may only assert behaviour that exists in the last release. A case
+  that needs a new feature (`failed-check`, ...) reaches it after the release that contains the
+  feature; until then it keeps asserting the outcome only.
 - Every bug fix needs a regression test that fails without the fix.
 - If a check fails for a real reason, report it rather than weakening the test.
 
