@@ -323,6 +323,7 @@ runs:
         name: ${{ inputs.artifact-name }}
         path: dist/
         retention-days: 5
+        compression-level: 0 # wheels and sdists are already compressed
         if-no-files-found: error
 
     # Last step, runs only when a step above failed. The id written by fail, or

@@ -60,8 +60,6 @@ jobs:
             action.y*ml
 
       # Reformat the pinned files so ratchet's output matches repo style.
-      # Version pinned so a `prettier` release can't silently change
-      # formatting output on a bot-authored PR.
       - name: Format YAML
         run: |
           make format-yaml

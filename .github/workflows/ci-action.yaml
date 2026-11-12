@@ -253,6 +253,11 @@ jobs:
           - case: ambiguous-import-name
             fixture: pkg-ambiguous-import
             expected: import
+          # `stage` runs a helper of scripts/test-helper.sh before the action
+          - case: oversized-file
+            fixture: pkg
+            expected: size
+            stage: oversized
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
@@ -262,6 +267,13 @@ jobs:
         env:
           FIXTURE: ${{ matrix.fixture }}
         run: cp -r "test/fixtures/${FIXTURE}/." .
+
+      - name: Stage an oversized file in the package
+        if: matrix.stage == 'oversized'
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          stage_oversized_file pypi_release_action_fixture
 
       # The error annotation of this step is expected: the step must fail
       - name: Run build-package action
