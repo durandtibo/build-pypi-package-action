@@ -11,7 +11,7 @@ workflow before a bad release can go out.
 
 Point it at a repo with a `pyproject.toml`, and it builds the distributions with
 `uv`, checks their metadata, verifies the version being built is actually safe to publish, smoke-tests
-the wheel and the sdist in clean environments, and uploads everything as a workflow artifact — ready for a publish step
+the wheel in a clean environment, and uploads everything as a workflow artifact — ready for a publish step
 right after it.
 
 ## Why use it
@@ -22,7 +22,7 @@ up. This action exists to catch the usual ways that goes wrong _before_ the publ
 - A `workflow_dispatch` dry run accidentally targets a real release version instead of a pre-release.
 - A tag doesn't actually match the version in `pyproject.toml`.
 - The version being built is already on PyPI (a duplicate/stale release).
-- The wheel or the sdist builds but doesn't actually install or import.
+- The wheel (and so the sdist it is built from) doesn't actually install or import.
 
 If any of these are true, the action fails the job and nothing gets published.
 
@@ -50,12 +50,11 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
   one, else the first top-level package (directory with `__init__.py`), else the first top-level
   module.
 - `1.4` fails if the wheel has no `Summary` or no `Requires-Python` (`metadata-fields`).
-- `1.5` fails if the wheel and the sdist have a different name or version (`artifact-mismatch`).
-- `1.6` fails if either file contains `.env` (not `.env.example`), `.git`, `.pypirc`, SSH keys, `.pem`
+- `1.5` fails if either file contains `.env` (not `.env.example`), `.git`, `.pypirc`, SSH keys, `.pem`
   files, `__pycache__`, `.pyc` or `.DS_Store` (`unwanted-files`).
-- `1.7` fails if a file exceeds PyPI's default 100 MiB limit (`size`).
-- `1.8` only warns about a platform-specific wheel, which one runner cannot cover for every platform.
-- `1.9` validates the metadata with `twine check --strict` (`twine`). It runs last, after the cheap
+- `1.6` fails if a file exceeds PyPI's default 100 MiB limit (`size`).
+- `1.7` only warns about a platform-specific wheel, which one runner cannot cover for every platform.
+- `1.8` validates the metadata with `twine check --strict` (`twine`). It runs last, after the cheap
   local checks, because it needs a download. `twine` is pinned, and so are its dependencies
   (`uvx --exclude-newer <date>`), so the check is reproducible.
 
@@ -78,9 +77,11 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
 - `3.1` picks the module to import: the `import-name` input if set, else the one detected in `1.3`.
   It fails if neither is available (`import`).
-- `3.2` and `3.3` install the wheel and the sdist, each into a throwaway environment, and import that
-  module in isolated mode (`smoke-wheel`, `smoke-sdist`).
-- `3.4` loads every declared entry point (console scripts, plugins) from the installed wheel, so a typo
+- `3.2` installs the wheel into a throwaway environment and imports that module in isolated mode
+  (`smoke-wheel`). There is no separate sdist test: `uv build` builds the wheel _from_ the sdist, so a
+  wheel that imports proves the sdist is complete and builds. The sdist is still checked for unwanted
+  files (`1.5`) and size (`1.6`).
+- `3.3` loads every declared entry point (console scripts, plugins) from the installed wheel, so a typo
   in `[project.scripts]` fails here and not when a user runs the command (`entry-points`). An entry
   point that needs an optional dependency which is not installed fails this check too.
 
@@ -135,9 +136,9 @@ other versions, so run your own test matrix separately.
 and are available once step `1.3` has run. If an earlier step fails, the action fails and they are
 empty.
 
-`failed-check` is one of `build`, `dist-contents`, `twine`, `metadata-fields`, `artifact-mismatch`,
+`failed-check` is one of `build`, `dist-contents`, `twine`, `metadata-fields`,
 `unwanted-files`, `size`, `local-version`, `manual-version`, `tag`, `published`, `import`,
-`smoke-wheel`, `smoke-sdist`, `entry-points`. It is meant for diagnostics and tests: the annotation
+`smoke-wheel`, `entry-points`. It is meant for diagnostics and tests: the annotation
 and the job summary already say what failed and how to fix it. To read it after a failure, set
 `continue-on-error: true` on the action step.
 
@@ -243,6 +244,8 @@ Breaking changes:
   entry point that cannot be loaded, a post release on a manual run, and any PyPI answer other than
   404 in the duplicate check (a PyPI outage now fails the job).
 - **The tag must be exactly `v` + the normalized version** (`v1.0.0rc1`, not `v1.0.0-rc1`).
+- **`smoke-sdist` and `artifact-mismatch` are removed.** `uv build` builds the wheel from the sdist, so
+  neither could fail independently of the wheel checks.
 - New output `failed-check`; `twine` is pinned and the `uv` cache is disabled.
 
 ## Development
