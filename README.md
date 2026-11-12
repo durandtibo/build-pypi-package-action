@@ -33,7 +33,7 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
 **0.x Setup**
 
-- `0.1` installs `uv` and the requested Python version
+- `0.1` installs a pinned `uv` and the requested Python version
   ([`astral-sh/setup-uv`](https://github.com/astral-sh/setup-uv), without cache: a release build never
   consumes or writes one).
 - `0.2` defines the `fail` helper used by every later step.
@@ -43,7 +43,8 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 - `1.1` builds the sdist and wheel into `dist/` with `uv build --clear --no-sources`, so stale files
   and `[tool.uv.sources]` overrides cannot change what is released (`build`).
 - `1.2` fails unless `dist/` holds exactly one wheel and one sdist (`dist-contents`).
-- `1.3` validates the metadata with a pinned `twine check --strict` (`twine`).
+- `1.3` validates the metadata with `twine check --strict` (`twine`). `twine` is pinned, and so are its
+  dependencies (`uvx --exclude-newer <date>`), so the check is reproducible.
 - `1.4` reads the package name and version from the built wheel's metadata, not from a second parser of
   `pyproject.toml`, so static and dynamic versions behave the same and the guards check what is
   uploaded. It also detects the import name: `top_level.txt` if the wheel has one, else the first

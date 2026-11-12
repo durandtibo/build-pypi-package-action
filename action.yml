@@ -50,6 +50,7 @@ runs:
     - name: 0.1 Install uv
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # ratchet:astral-sh/setup-uv@v10.3.3
       with:
+        version: "0.13.7" # bump with twine, quarterly, in its own PR (see CLAUDE.md)
         python-version: ${{ inputs.python-version }}
         enable-cache: false
 
@@ -91,14 +92,17 @@ runs:
             "Found ${#wheels[@]} wheel(s) and ${#sdists[@]} sdist(s); dist/ holds: ${files[*]:-nothing}. Exactly one of each is required." \
             "Check [build-system] and that no other step writes to dist/."
 
-    # twine is pinned: an unpinned version makes a release build depend on
-    # whatever is newest. Bump it with the quarterly review (see CLAUDE.md).
+    # twine and its dependencies are pinned: twine@x.y.z fixes twine itself and
+    # --exclude-newer fixes what its dependencies (requests, readme-renderer, ...)
+    # resolve to, so twine check is reproducible. The flag is scoped to twine: it
+    # must not restrict the package's own build requirements. Bump the version and
+    # the date with the quarterly review (see CLAUDE.md).
     - name: 1.3 Check package metadata
       id: twine
       shell: bash
       run: |
         source "${RUNNER_TEMP}/fail.sh"
-        uvx twine@7.0.0 check --strict dist/* ||
+        uvx --exclude-newer 2026-11-01 twine@7.0.0 check --strict dist/* ||
           fail twine "Invalid package metadata" \
             "twine check --strict rejected the metadata (output above); PyPI would reject or misrender it." \
             "Fix the readme, description or classifiers named above; run uvx twine check --strict dist/* locally."
