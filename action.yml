@@ -18,6 +18,20 @@ inputs:
     description: Module imported by the smoke test (default is resolved from the wheel; the action fails if that is ambiguous)
     required: false
     default: ""
+  uv-version:
+    description: Version of uv to install (the default is the one this action release was tested with)
+    required: false
+    default: "0.13.7" # bump with twine, quarterly, in its own PR (see CLAUDE.md)
+  twine-version:
+    description: Version of twine used by twine check
+    required: false
+    default: "7.0.0"
+  twine-exclude-newer:
+    description: >-
+      Date (YYYY-MM-DD) after which published packages are ignored when resolving twine and its
+      dependencies, so twine check is reproducible; empty to disable (needed for a newer twine-version)
+    required: false
+    default: "2026-11-01"
 
 outputs:
   package-name:
@@ -42,7 +56,7 @@ runs:
     - name: 0.1 Install uv
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # ratchet:astral-sh/setup-uv@v10.3.3
       with:
-        version: "0.13.7" # bump with twine, quarterly, in its own PR (see CLAUDE.md)
+        version: ${{ inputs.uv-version }}
         python-version: ${{ inputs.python-version }}
         enable-cache: false
 
@@ -200,13 +214,18 @@ runs:
     # twine and its dependencies are pinned: twine@x.y.z fixes twine itself and
     # --exclude-newer fixes what its dependencies (requests, readme-renderer, ...)
     # resolve to, so twine check is reproducible. The flag is scoped to twine: it
-    # must not restrict the package's own build requirements. Bump the version and
-    # the date with the quarterly review (see CLAUDE.md).
+    # must not restrict the package's own build requirements. Bump the three
+    # defaults with the quarterly review (see CLAUDE.md).
     - name: 1.9 Check package metadata
       shell: bash
+      env:
+        TWINE_VERSION: ${{ inputs.twine-version }}
+        EXCLUDE_NEWER: ${{ inputs.twine-exclude-newer }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
-        uvx --exclude-newer 2026-11-01 twine@7.0.0 check --strict dist/* ||
+        args=()
+        [[ -z "${EXCLUDE_NEWER}" ]] || args=(--exclude-newer "${EXCLUDE_NEWER}")
+        uvx ${args[@]+"${args[@]}"} "twine@${TWINE_VERSION}" check --strict dist/* ||
           fail twine "Invalid package metadata" \
             "twine check --strict rejected the metadata (output above); PyPI would reject or misrender it." \
             "Fix the readme, description or classifiers named above; run uvx twine check --strict dist/* locally."
