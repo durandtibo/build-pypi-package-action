@@ -99,8 +99,13 @@ Conventions:
 ## Tests
 
 - Tests are workflow-based: a new behaviour or guard in `action.yml` needs a fixture under
-  `test/fixtures/` (or an extra assertion) and a job in both `ci-action.yaml` and
-  `nightly-test-released.yaml` where applicable.
+  `test/fixtures/` (or an extra assertion) and a row in the case tables of both `ci-action.yaml` and
+  `nightly-test-released.yaml` where applicable. `ci-action.yaml` and `nightly-test-released.yaml` have
+  the same structure: `build`/`build-python` (success path), `accept` (packages that must build),
+  `reject` (packages that must fail, with the expected `failed-check` id), `reject-manual`
+  (`workflow_dispatch` only), `reject-tag-mismatch` (tag ref only) and `verify-artifact`. They differ
+  only in the `uses:` ref, in the staging of the fixtures (`legacy-invoke/`), and in the rows of
+  features the release does not have yet. A new case is a new row, not a new job.
 - Put assertions shared by both workflows in `scripts/test-helper.sh` so the two only differ in
   which action ref they exercise.
 - Failure-path fixtures must assert that the action fails for the expected reason, not just that

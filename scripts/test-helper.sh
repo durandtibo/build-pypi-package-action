@@ -22,6 +22,19 @@ assert_metadata() {
 # The action built one wheel and one sdist.
 assert_dist_built() {
 	ls dist/*.whl dist/*.tar.gz
+	test ! -e dist/SHA256SUMS || {
+		echo "::error::dist/SHA256SUMS exists, but the action no longer writes checksums"
+		exit 1
+	}
+}
+
+# assert_stale_dist_cleared
+# Files placed in dist/ before the build must be gone: they must never leak into the artifact.
+assert_stale_dist_cleared() {
+	test ! -e dist/stale-0.0.0-py3-none-any.whl && test ! -e dist/stale-0.0.0.tar.gz || {
+		echo "::error::stale files from a previous build are still in dist/"
+		exit 1
+	}
 }
 
 # assert_released_dist_built
@@ -82,6 +95,18 @@ assert_released_dist_artifact() {
 		exit 1
 	}
 	(cd dist && sha256sum --check SHA256SUMS)
+}
+
+# assert_released_failed_stage <expected-failed-check>
+# The last release has no failed-check output, so only the stage is asserted:
+# before the distributions exist when the build itself was expected to fail
+# (expected = build), after they were built otherwise.
+assert_released_failed_stage() {
+	if test "$1" = "build"; then
+		assert_failed_during_build
+	else
+		assert_failed_after_build
+	fi
 }
 
 # assert_failed_during_build
