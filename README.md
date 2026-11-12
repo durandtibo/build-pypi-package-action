@@ -43,18 +43,21 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 - `1.1` builds the sdist and wheel into `dist/` with `uv build --clear --no-sources`, so stale files
   and `[tool.uv.sources]` overrides cannot change what is released (`build`).
 - `1.2` fails unless `dist/` holds exactly one wheel and one sdist (`dist-contents`).
-- `1.3` validates the metadata with `twine check --strict` (`twine`). `twine` is pinned, and so are its
-  dependencies (`uvx --exclude-newer <date>`), so the check is reproducible.
-- `1.4` reads the package name and version from the built wheel's metadata, not from a second parser of
-  `pyproject.toml`, so static and dynamic versions behave the same and the guards check what is
-  uploaded. It also detects the import name: `top_level.txt` if the wheel has one, else the first
-  top-level package (directory with `__init__.py`), else the first top-level module.
-- `1.5` fails if the wheel has no `Summary` or no `Requires-Python` (`metadata-fields`).
-- `1.6` fails if the wheel and the sdist have a different name or version (`artifact-mismatch`).
-- `1.7` fails if either file contains `.env` (not `.env.example`), `.git`, `.pypirc`, SSH keys, `.pem`
+- `1.3` opens the wheel and the sdist once and extracts facts only, no verdict: name, version, missing
+  metadata fields, unwanted files, import name. The name and version come from the built wheel's
+  metadata, not from a second parser of `pyproject.toml`, so static and dynamic versions behave the
+  same and the guards check what is uploaded. The import name is `top_level.txt` if the wheel has
+  one, else the first top-level package (directory with `__init__.py`), else the first top-level
+  module.
+- `1.4` fails if the wheel has no `Summary` or no `Requires-Python` (`metadata-fields`).
+- `1.5` fails if the wheel and the sdist have a different name or version (`artifact-mismatch`).
+- `1.6` fails if either file contains `.env` (not `.env.example`), `.git`, `.pypirc`, SSH keys, `.pem`
   files, `__pycache__`, `.pyc` or `.DS_Store` (`unwanted-files`).
-- `1.8` fails if a file exceeds PyPI's default 100 MiB limit (`size`).
-- `1.9` only warns about a platform-specific wheel, which one runner cannot cover for every platform.
+- `1.7` fails if a file exceeds PyPI's default 100 MiB limit (`size`).
+- `1.8` only warns about a platform-specific wheel, which one runner cannot cover for every platform.
+- `1.9` validates the metadata with `twine check --strict` (`twine`). It runs last, after the cheap
+  local checks, because it needs a download. `twine` is pinned, and so are its dependencies
+  (`uvx --exclude-newer <date>`), so the check is reproducible.
 
 **2.x Release guards**
 
@@ -129,7 +132,7 @@ other versions, so run your own test matrix separately.
 | `failed-check`    | Diagnostic: id of the check that failed (see below); empty on success.            |
 
 `package-name` and `package-version` are read from the built wheel, so they are what gets uploaded,
-and are available once step `1.4` has run. If an earlier step fails, the action fails and they are
+and are available once step `1.3` has run. If an earlier step fails, the action fails and they are
 empty.
 
 `failed-check` is one of `build`, `dist-contents`, `twine`, `metadata-fields`, `artifact-mismatch`,
