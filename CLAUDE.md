@@ -18,7 +18,7 @@ action itself.
 - Do not edit `.make/`: it is a shared directory synced by `bot-sync-shared-makefile.yaml`.
 - Run `make format` and `make lint` before committing. Fix what they report instead of disabling
   rules.
-- The action can only be exercised end to end by GitHub Actions (`test-local.yaml`). Say so in the
+- The action can only be exercised end to end by GitHub Actions (`ci-action.yaml`). Say so in the
   PR instead of claiming those tests pass locally.
 
 ## Git workflow
@@ -48,28 +48,33 @@ action itself.
 
 ## Workflow structure (`.github/workflows/`)
 
-Files are prefixed by role:
+Files are prefixed by role, mirroring `durandtibo/cancel-queued-runs-action`:
 
-- `ci.yaml`: entry point for pull requests, pushes to `main`, a weekly schedule and manual runs. It
-  holds no steps, only jobs that call the reusable test workflows below.
-  - `test-local.yaml`: runs the action from this checkout (`uses: ./`), i.e. the version not
-    released yet, against the fixtures in `test/fixtures/` on Linux, macOS, and Windows. It covers
-    the success path and the failure paths (already-published version, plain version on a manual
-    run, failing build command, custom `build-command`).
-  - `test-stable.yaml`: the same tests against the last stable release. Update the version in its
-    header comment and in its `uses:` refs when a new release is made.
-- `format.yaml`: checks that YAML, Makefile, shell, and Markdown files are formatted
-  (`make format` followed by `git diff --exit-code`).
+- `ci.yaml`: entry point for pull requests, pushes to `main`, a nightly schedule and manual runs. It
+  holds no steps, only jobs that call the reusable workflows below.
+  - `lib-get-test-matrix.yaml`: loads the OS list (`os_all`: Linux, macOS, Windows) and the Python
+    versions from `durandtibo/workflow-config-action` once, and exposes them as the `test_matrix`
+    output. Callers pass it down; never hard-code OS or Python lists in a workflow.
+  - `ci-format.yaml`: checks that YAML, Makefile, shell, and Markdown files are formatted
+    (`make format` followed by `git diff --exit-code`) and lints the shell and YAML files.
+  - `ci-action.yaml`: runs the action from this checkout (`uses: ./`), i.e. the version not
+    released yet, against the fixtures in `test/fixtures/` on every OS, and on every Python version
+    on Linux. It covers the success path and the failure paths (already-published version, plain
+    version on a manual run, failing build command, custom `build-command`).
+- `nightly.yaml`: nightly entry point for the last stable release. It calls
+  `nightly-test-released.yaml`, the same tests as `ci-action.yaml` against the last stable
+  release. Update the version in its header comment and in its `uses:` refs when a new release is
+  made.
 - `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and is
   not called from `ci.yaml`, so it can be a required check.
-- `dependency-review.yml`: dependency review on pull requests.
+- `security-dependency-review.yaml`: dependency review on pull requests.
 - `bot-*.yaml`: scheduled automation that opens PRs or acts on runs (pin actions, sync `.make/`,
-  cancel stale queued runs).
+  format files, cancel stale queued runs).
 
 Conventions:
 
-- Set `permissions` at the workflow level, and set `permissions: {}` there when the jobs need
-  grants, so each job declares its own least-privilege `permissions`.
+- Set `permissions: {}` at the workflow level, and declare least-privilege `permissions` on each
+  job (and on each job that calls a reusable workflow).
 - Set `timeout-minutes` on every job.
 - Each reusable workflow also has `workflow_dispatch`, so it can be run alone. Add a new check as a
   new workflow plus a job in `ci.yaml`.
@@ -79,8 +84,8 @@ Conventions:
 ## Tests
 
 - Tests are workflow-based: a new behaviour or guard in `action.yml` needs a fixture under
-  `test/fixtures/` (or an extra assertion) and a job in both `test-local.yaml` and
-  `test-stable.yaml` where applicable.
+  `test/fixtures/` (or an extra assertion) and a job in both `ci-action.yaml` and
+  `nightly-test-released.yaml` where applicable.
 - Put assertions shared by both workflows in `scripts/test-helper.sh` so the two only differ in
   which action ref they exercise.
 - Failure-path fixtures must assert that the action fails for the expected reason, not just that

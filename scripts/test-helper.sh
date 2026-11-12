@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared assertions for test-local.yaml and test-stable.yaml, so the two
+# Shared assertions for ci-action.yaml and nightly-test-released.yaml, so the two
 # workflows only differ in which build-package action ref they exercise
 # (local checkout vs. last stable release), not in verification logic.
 set -euo pipefail

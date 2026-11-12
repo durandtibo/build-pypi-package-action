@@ -1,0 +1,261 @@
+# Workflow testing the last stable release of the action
+# (durandtibo/build-pypi-package-action@v0.0.2), to catch regressions in what
+# consumers pick up. It mirrors the tests of ci-action.yaml, which tests the
+# current checkout instead. Update the version in this header and in the
+# `uses:` refs below when a new version is released.
+
+name: Test Released Action
+on:
+  workflow_call:
+    inputs:
+      test-matrix:
+        description: "JSON test matrix from lib-get-test-matrix.yaml, loaded once by the caller"
+        required: true
+        type: string
+  workflow_dispatch: # to trigger manually
+
+permissions: {}
+
+jobs:
+  # Build the fixture package on every OS (Linux, macOS, Windows)
+  build:
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      max-parallel: 8
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(inputs.test-matrix).os_matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      # The build-package action assumes the package it builds lives at the
+      # repo root (pyproject.toml, Makefile, tasks.py), so stage the fixture
+      # there for the duration of this job.
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg/. .
+
+      - name: Run build-package action
+        id: build
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        with:
+          artifact-name: dist-stable-${{ matrix.os }}
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_built
+
+  # Build the fixture package with every Python version of the config
+  build-python:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      max-parallel: 8
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJson(inputs.test-matrix).python_versions_standard }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg/. .
+
+      - name: Run build-package action
+        id: build
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        with:
+          python-version: ${{ matrix.python-version }}
+          artifact-name: dist-stable-python-${{ matrix.python-version }}
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_built
+
+  # build-package must invoke the command given via the build-command
+  # input instead of assuming "inv build-package".
+  custom-build-command:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-custom-build-command/. .
+
+      - name: Run build-package action
+        id: build
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        with:
+          artifact-name: dist-stable-custom-build-command
+          build-command: inv custom-build
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_built
+
+  # build-package must fail closed when the build command itself errors
+  # out, before it ever gets to the metadata/publish checks.
+  reject-build-failure:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-build-failure/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+
+      - name: Assert build-package action failed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (build command errors out)" "${OUTCOME}"
+
+  # build-package must fail closed when the package name/version it built
+  # is already published on PyPI, regardless of how it was triggered.
+  reject-already-published-version:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      # This fixture claims to be "requests" 2.31.0, a name/version already
+      # published on PyPI, so the action's "already published" check should
+      # reject it before it ever gets to the smoke test.
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-published/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+
+      - name: Assert build-package action failed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (already-published version)" "${OUTCOME}"
+
+  # build-package must reject workflow_dispatch runs that target a plain
+  # release version instead of a dev/pre-release one. This check is only
+  # exercised when the workflow is dispatched manually.
+  reject-plain-version-on-manual-run:
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-plain-version/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+
+      - name: Assert build-package action failed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (manual run, plain release version)" "${OUTCOME}"
+
+  # Verification just inspects already-built, OS-independent files
+  # (wheel/sdist/checksums), so one runner is enough regardless of which
+  # OS produced each artifact.
+  verify-artifact:
+    needs: build
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      max-parallel: 8
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(inputs.test-matrix).os_matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # ratchet:actions/download-artifact@v8.0.2
+        with:
+          name: dist-stable-${{ matrix.os }}
+          path: dist/
+
+      - name: Assert dist artifact contains the expected files
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_artifact
