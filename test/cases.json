@@ -27,7 +27,7 @@
       "fixture": "pkg-import-name",
       "name": "pypi-release-action-fixture-alt",
       "version": "0.0.1a1",
-      "released": false
+      "released": true
     },
     {
       "case": "import-name-explicit",
@@ -35,21 +35,21 @@
       "name": "pypi-release-action-fixture-alt",
       "version": "0.0.1a1",
       "import-name": "fixture_alt",
-      "released": false
+      "released": true
     },
     {
       "case": "import-name-matches-distribution",
       "fixture": "pkg-multi-module",
       "name": "pypi-release-action-fixture-multi",
       "version": "0.0.1a1",
-      "released": false
+      "released": true
     },
     {
       "case": "import-name-skips-private",
       "fixture": "pkg-private-module",
       "name": "pypi-release-action-fixture-private",
       "version": "0.0.1a1",
-      "released": false
+      "released": true
     }
   ],
   "reject": [
@@ -81,45 +81,45 @@
       "case": "no-requires-python",
       "fixture": "pkg-no-requires-python",
       "expected": "metadata-fields",
-      "released": false
+      "released": true
     },
     {
       "case": "secret-file",
       "fixture": "pkg-secret-file",
       "expected": "unwanted-files",
-      "released": false
+      "released": true
     },
     {
       "case": "local-version",
       "fixture": "pkg-local-version",
       "expected": "local-version",
-      "released": false
+      "released": true
     },
     {
       "case": "bad-entry-point",
       "fixture": "pkg-bad-entry-point",
       "expected": "entry-points",
-      "released": false
+      "released": true
     },
     {
       "case": "wrong-import-name",
       "fixture": "pkg-import-name",
       "expected": "smoke-wheel",
       "import-name": "not_the_module",
-      "released": false
+      "released": true
     },
     {
       "case": "ambiguous-import-name",
       "fixture": "pkg-ambiguous-import",
       "expected": "import",
-      "released": false
+      "released": true
     },
     {
       "case": "oversized-file",
       "fixture": "pkg",
       "expected": "size",
       "stage": "oversized",
-      "released": false
+      "released": true
     }
   ],
   "reject-manual": [
@@ -133,7 +133,7 @@
       "case": "post-version",
       "fixture": "pkg-post-version",
       "expected": "manual-version",
-      "released": false
+      "released": true
     }
   ],
   "reject-tag-mismatch": [

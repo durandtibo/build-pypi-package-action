@@ -1,18 +1,12 @@
 # Workflow testing the last stable release of the action
-# (durandtibo/build-pypi-package-action@v0.0.2), to catch regressions in what
-# consumers pick up. It has the same structure as ci-action.yaml, which tests the
-# current checkout instead; it differs only in the `uses:` ref, in the staging of
-# the fixtures, and in the mode of load-cases.sh: only the rows of test/cases.json
-# marked "released": true, i.e. the features that the release has. Update the
-# version in this header and in the `uses:` refs below when a new version is
-# released, then flip `released` to true for its features in test/cases.json.
-#
-# The release has no `failed-check` output, so rejections are checked by outcome
-# and by stage (before or after the distributions were built) only.
-#
-# v0.0.2 still builds through invoke (`make install-invoke`, `inv build-package`),
-# so each job also stages test/fixtures/legacy-invoke/. Remove that staging, and
-# the directory, once the released version builds with uv directly.
+# (durandtibo/build-pypi-package-action@v0.1.0), to catch regressions in what
+# consumers pick up. It has the same structure and the same assertions as
+# ci-action.yaml, which tests the current checkout instead; it differs only in the
+# `uses:` ref, the artifact names, and the mode of load-cases.sh: only the rows of
+# test/cases.json marked "released": true, i.e. the features that the release has.
+# Update the version in this header and in the `uses:` refs below when a new
+# version is released, then flip `released` to true for its features in
+# test/cases.json.
 
 name: Test Released Action
 on:
@@ -67,13 +61,11 @@ jobs:
       # repo root, so stage the fixture there for the duration of this job.
       - name: Stage fixture package at repo root
         shell: bash
-        run: |
-          cp -r test/fixtures/pkg/. .
-          cp -r test/fixtures/legacy-invoke/. .
+        run: cp -r test/fixtures/pkg/. .
 
       - name: Run build-package action
         id: build
-        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
         with:
           artifact-name: dist-stable-${{ matrix.os }}
 
@@ -90,7 +82,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_released_dist_built
+          assert_dist_built
 
   # Build the fixture package with every Python version of the config
   build-python:
@@ -110,13 +102,11 @@ jobs:
 
       - name: Stage fixture package at repo root
         shell: bash
-        run: |
-          cp -r test/fixtures/pkg/. .
-          cp -r test/fixtures/legacy-invoke/. .
+        run: cp -r test/fixtures/pkg/. .
 
       - name: Run build-package action
         id: build
-        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
         with:
           python-version: ${{ matrix.python-version }}
           artifact-name: dist-stable-python-${{ matrix.python-version }}
@@ -134,7 +124,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_released_dist_built
+          assert_dist_built
 
   # Packages that must build. Each row is a case; `stale` first fills dist/ with stale files, which must
   # be gone afterwards; `import-name` is passed to the action.
@@ -158,9 +148,7 @@ jobs:
         shell: bash
         env:
           FIXTURE: ${{ matrix.fixture }}
-        run: |
-          cp -r "test/fixtures/${FIXTURE}/." .
-          cp -r test/fixtures/legacy-invoke/. .
+        run: cp -r "test/fixtures/${FIXTURE}/." .
 
       - name: Create stale files in dist/
         if: matrix.stale
@@ -171,8 +159,9 @@ jobs:
 
       - name: Run build-package action
         id: build
-        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
         with:
+          import-name: ${{ matrix.import-name }}
           artifact-name: dist-stable-accept-${{ matrix.case }}
 
       - name: Assert extracted metadata matches the fixture
@@ -190,7 +179,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_released_dist_built
+          assert_dist_built
 
       # dist/ content from a previous build must never leak into the artifact.
       - name: Assert stale files are gone
@@ -200,8 +189,7 @@ jobs:
           source scripts/test-helper.sh
           assert_stale_dist_cleared
 
-  # Packages that must be rejected. `expected` is the failed-check id of the check that must fail
-  # (only the stage is asserted here: the release has no failed-check output).
+  # Packages that must be rejected. `expected` is the failed-check id of the check that must fail.
   reject:
     name: reject (${{ matrix.case }})
     if: github.ref_type != 'tag'
@@ -221,26 +209,34 @@ jobs:
         shell: bash
         env:
           FIXTURE: ${{ matrix.fixture }}
+        run: cp -r "test/fixtures/${FIXTURE}/." .
+
+      - name: Stage an oversized file in the package
+        if: matrix.stage == 'oversized'
+        shell: bash
         run: |
-          cp -r "test/fixtures/${FIXTURE}/." .
-          cp -r test/fixtures/legacy-invoke/. .
+          source scripts/test-helper.sh
+          stage_oversized_file pypi_release_action_fixture
 
       # The error annotation of this step is expected: the step must fail
       - name: Run build-package action
         id: build
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
+        with:
+          import-name: ${{ matrix.import-name }}
 
-      - name: Assert build-package action failed at the expected stage
+      - name: Assert build-package action failed for the expected reason
         shell: bash
         env:
           OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
           EXPECTED: ${{ matrix.expected }}
           CASE: ${{ matrix.case }}
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (${CASE})" "${OUTCOME}"
-          assert_released_failed_stage "${EXPECTED}"
+          assert_failed_check "${EXPECTED}" "${FAILED_CHECK}"
 
   # Manual runs must publish a pre-release only; the guard is a whitelist, so a post release is rejected too.
   # Only exercised when the workflow is dispatched manually.
@@ -263,26 +259,25 @@ jobs:
         shell: bash
         env:
           FIXTURE: ${{ matrix.fixture }}
-        run: |
-          cp -r "test/fixtures/${FIXTURE}/." .
-          cp -r test/fixtures/legacy-invoke/. .
+        run: cp -r "test/fixtures/${FIXTURE}/." .
 
       # The error annotation of this step is expected: the step must fail
       - name: Run build-package action
         id: build
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
 
-      - name: Assert build-package action failed at the expected stage
+      - name: Assert build-package action failed for the expected reason
         shell: bash
         env:
           OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
           EXPECTED: ${{ matrix.expected }}
           CASE: ${{ matrix.case }}
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (${CASE})" "${OUTCOME}"
-          assert_released_failed_stage "${EXPECTED}"
+          assert_failed_check "${EXPECTED}" "${FAILED_CHECK}"
 
   # The pre-release requirement only applies to manual runs: a plain release version that is not on PyPI must be accepted
   # on any other trigger.
@@ -298,13 +293,11 @@ jobs:
 
       - name: Stage fixture package at repo root
         shell: bash
-        run: |
-          cp -r test/fixtures/pkg-plain-version/. .
-          cp -r test/fixtures/legacy-invoke/. .
+        run: cp -r test/fixtures/pkg-plain-version/. .
 
       - name: Run build-package action
         id: build
-        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
         with:
           artifact-name: dist-stable-accept-plain-version
 
@@ -321,7 +314,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_released_dist_built
+          assert_dist_built
 
   # The tag must be exactly v + the package version (v0.0.1a1 for the fixture). Only exercised on a tag ref other
   # than that one.
@@ -344,26 +337,25 @@ jobs:
         shell: bash
         env:
           FIXTURE: ${{ matrix.fixture }}
-        run: |
-          cp -r "test/fixtures/${FIXTURE}/." .
-          cp -r test/fixtures/legacy-invoke/. .
+        run: cp -r "test/fixtures/${FIXTURE}/." .
 
       # The error annotation of this step is expected: the step must fail
       - name: Run build-package action
         id: build
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@3781c7eb97f68448f70e67e386f03aac7f7be384 # ratchet:durandtibo/build-pypi-package-action@v0.0.2
+        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
 
-      - name: Assert build-package action failed at the expected stage
+      - name: Assert build-package action failed for the expected reason
         shell: bash
         env:
           OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
           EXPECTED: ${{ matrix.expected }}
           CASE: ${{ matrix.case }}
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (${CASE})" "${OUTCOME}"
-          assert_released_failed_stage "${EXPECTED}"
+          assert_failed_check "${EXPECTED}" "${FAILED_CHECK}"
 
   # Verification just inspects already-built, OS-independent files (wheel and sdist), so one runner is enough
   # regardless of which OS produced each artifact.
@@ -392,4 +384,4 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_released_dist_artifact
+          assert_dist_artifact

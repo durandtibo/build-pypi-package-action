@@ -296,8 +296,7 @@ The action can only be exercised end to end on GitHub Actions; there is no local
   reproduce those triggers. All other jobs are skipped on a tag ref.
 - `nightly-test-released.yaml` has the same structure and tests the last stable release with the rows
   of `test/cases.json` marked `"released": true`; the other rows are for features that are not
-  released yet. It only asserts the outcome and the failure stage, because the release has no
-  `failed-check` output yet.
+  released yet. Its assertions are the same as those of `ci-action.yaml`.
 
 ### Workflows
 
