@@ -145,7 +145,7 @@ and the job summary already say what failed and how to fix it. To read it after 
 - uses: actions/checkout@v7
 
 - name: Build package
-  uses: durandtibo/build-pypi-package-action@v0.0.2
+  uses: durandtibo/build-pypi-package-action@v1
   with:
     python-version: "3.14"
 ```
@@ -155,7 +155,7 @@ and the job summary already say what failed and how to fix it. To read it after 
 ```yaml
 - name: Build package
   id: build
-  uses: durandtibo/build-pypi-package-action@v0.0.2
+  uses: durandtibo/build-pypi-package-action@v1
 
 - name: Show package metadata
   env:
@@ -168,18 +168,20 @@ and the job summary already say what failed and how to fix it. To read it after 
 
 ```yaml
 - name: Build package
-  uses: durandtibo/build-pypi-package-action@v0.0.2
+  uses: durandtibo/build-pypi-package-action@v1
   with:
     artifact-name: my-package-dist
 ```
 
 ### End-to-end release workflow
 
-Runs on both manual dispatch (dry run with a pre-release version) and tag pushes (real release), and only
-publishes on the tag push. Publishing uses
-[PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/), which needs `id-token: write`
-(configure the trusted publisher on PyPI first). Pin third-party actions to commit SHAs in your own
-workflows.
+Use two jobs. The `build` job only needs `contents: read`; the `publish` job downloads the artifact and
+is the only one with `id-token: write` and the `pypi` environment, so the code that runs during the
+build never sees the OIDC token. The workflow runs on manual dispatch (dry run with a pre-release
+version) and on tag pushes (real release); only a tag push publishes. Publishing uses
+[PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/) (configure the trusted publisher
+and the `pypi` environment first). The artifact holds the wheel and the sdist only, so the publish step
+uploads the directory as is.
 
 ```yaml
 name: Release
@@ -190,23 +192,54 @@ on:
     tags:
       - "v*"
 
+permissions: {}
+
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: durandtibo/build-pypi-package-action@v1 # or pin the commit SHA
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
       id-token: write # trusted publishing
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Build package
-        id: build
-        uses: durandtibo/build-pypi-package-action@v0.0.2
-
-      - name: Publish to PyPI
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
 ```
+
+## Versioning
+
+Releases are tagged `vX.Y.Z` and are immutable. A floating major tag (`v1`) always points to the
+latest `v1.Y.Z` release and only receives non-breaking updates. Use `@v1` to follow them, or pin the
+full commit SHA of a release (as for any third-party action) for a reproducible build and let your
+update bot bump it.
+
+## Upgrading from v0.0.x
+
+Breaking changes:
+
+- **`SHA256SUMS` is gone.** The artifact holds exactly the wheel and the sdist. If a release job needs
+  checksums, compute them there.
+- **`package-name` is read from the built wheel** (the exact `Name` field), not from `pyproject.toml`.
+- **The module name no longer has to match the distribution name.** It is detected from the wheel, or
+  set with the new `import-name` input.
+- **Stricter checks that can fail a build that passed before:** a missing `Summary` or
+  `Requires-Python`, `.env`/key/`__pycache__` files in the package, a local version (`1.2.3+abc`), an
+  entry point that cannot be loaded, a post release on a manual run, and any PyPI answer other than
+  404 in the duplicate check (a PyPI outage now fails the job).
+- **The tag must be exactly `v` + the normalized version** (`v1.0.0rc1`, not `v1.0.0-rc1`).
+- New output `failed-check`; `twine` is pinned and the `uv` cache is disabled.
 
 ## Development
 

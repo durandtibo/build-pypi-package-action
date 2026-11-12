@@ -117,6 +117,17 @@ Conventions:
 - Every bug fix needs a regression test that fails without the fix.
 - If a check fails for a real reason, report it rather than weakening the test.
 
+## Release procedure
+
+1. Merge to `main` with green checks, including `nightly.yaml` on the previous release.
+2. Tag the commit `vX.Y.Z` (immutable) and create the GitHub release; list breaking changes in the
+   notes.
+3. Move the floating major tag to the same commit (`git tag -f vX && git push -f origin vX`).
+4. Update the version and SHA in the `uses:` refs and in the header of
+   `nightly-test-released.yaml`, add the rows of the new features to its case tables, and update the
+   README examples if the major version changed. Once the release no longer writes `SHA256SUMS` and builds
+   with uv directly, also remove the `assert_released_*` helpers and `test/fixtures/legacy-invoke/`.
+
 ## Reporting
 
 - State which checks ran (`make lint`, `make format`) and which did not.
