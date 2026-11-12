@@ -37,14 +37,6 @@ assert_stale_dist_cleared() {
 	fi
 }
 
-# assert_released_dist_built
-# Same for the last released action, which still writes dist/SHA256SUMS.
-# Used by nightly-test-released.yaml only; remove it, and the *_released helpers
-# below, once the nightly suite runs a release without checksums.
-assert_released_dist_built() {
-	ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
-}
-
 # stage_oversized_file <dir>
 # Writes 101 MiB of incompressible data into <dir>, above PyPI's 100 MiB limit,
 # so that a package that ships it is rejected by the size check.
@@ -84,56 +76,6 @@ assert_dist_artifact() {
 	# downloaded artifact the same expectation.
 	test "$(find dist -mindepth 1 -not -name .gitignore | wc -l)" -eq 2 || {
 		echo "::error::unexpected files in dist/: $(find dist -mindepth 1 -not -name .gitignore)"
-		exit 1
-	}
-}
-
-# assert_released_dist_artifact
-# Same for the last released action: wheel, sdist and checksums that cover
-# exactly those two files and verify. See assert_released_dist_built.
-assert_released_dist_artifact() {
-	ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
-	test "$(find dist -mindepth 1 -not -name .gitignore | wc -l)" -eq 3 || {
-		echo "::error::unexpected files in dist/: $(find dist -mindepth 1)"
-		exit 1
-	}
-	test "$(wc -l <dist/SHA256SUMS)" -eq 2 || {
-		echo "::error::SHA256SUMS should list exactly 2 files"
-		exit 1
-	}
-	(cd dist && sha256sum --check SHA256SUMS)
-}
-
-# assert_released_failed_stage <expected-failed-check>
-# The last release has no failed-check output, so only the stage is asserted:
-# before the distributions exist when the build itself was expected to fail
-# (expected = build), after they were built otherwise.
-assert_released_failed_stage() {
-	if test "$1" = "build"; then
-		assert_failed_during_build
-	else
-		assert_failed_after_build
-	fi
-}
-
-# assert_failed_during_build
-# The action must have failed before producing any distribution.
-assert_failed_during_build() {
-	if compgen -G "dist/*.whl" >/dev/null || compgen -G "dist/*.tar.gz" >/dev/null; then
-		echo "::error::dist/ holds distributions, but the build was expected to fail"
-		exit 1
-	fi
-}
-
-# assert_failed_after_build
-# For the last released action only (it has no failed-check output): see
-# assert_released_dist_built.
-# The distributions were built, but the action failed in a later check
-# (metadata, guards, smoke test) before checksums and upload.
-assert_failed_after_build() {
-	ls dist/*.whl dist/*.tar.gz
-	test ! -e dist/SHA256SUMS || {
-		echo "::error::dist/SHA256SUMS exists, so the action got past its checks"
 		exit 1
 	}
 }

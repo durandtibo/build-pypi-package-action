@@ -10,10 +10,7 @@ the wheel, and uploads `dist/` (wheel and sdist only) as an artifact. It exposes
 `package-name` and `package-version` (read from the built wheel) and the diagnostic `failed-check`. All logic is inline in `action.yml`;
 there is no separate script. `scripts/test-helper.sh` holds assertions shared by the test workflows, and
 `test/fixtures/` holds throwaway packages that the test workflows build. Neither is part of the
-action itself. The `assert_released_*` helpers keep the checksum assertions for the last release; remove them with
-the next release that no longer writes `SHA256SUMS`. `test/fixtures/legacy-invoke/` is not a package: `nightly-test-released.yaml` copies
-it next to the fixture because the released version still builds through invoke; remove it once the
-released version builds with uv directly.
+action itself.
 
 ## Environment
 
@@ -110,7 +107,7 @@ false` until the last release has the feature; the nightly workflow runs only th
   the same structure: `build`/`build-python` (success path), `accept` (packages that must build),
   `reject` (packages that must fail, with the expected `failed-check` id), `reject-manual`
   (`workflow_dispatch` only), `reject-tag-mismatch` (tag ref only) and `verify-artifact`. They differ
-  only in the `uses:` ref, in the staging of the fixtures (`legacy-invoke/`) and in the mode passed to
+  only in the `uses:` ref, in the artifact names and in the mode passed to
   `load-cases.sh`. A new case is a new row in `test/cases.json`, not a new job.
 - Put assertions shared by both workflows in `scripts/test-helper.sh` so the two only differ in
   which action ref they exercise.
@@ -137,8 +134,7 @@ false` until the last release has the feature; the nightly workflow runs only th
 3. Do not create or move a floating major tag (`vX`): releases are only immutable `vX.Y.Z` tags.
 4. Update the version and SHA in the `uses:` refs and in the header of
    `nightly-test-released.yaml`, flip `released` to `true` in `test/cases.json` for the features of the new release, and update the
-   `@vX.Y.Z` version in the README examples. Once the release no longer writes `SHA256SUMS` and builds
-   with uv directly, also remove the `assert_released_*` helpers and `test/fixtures/legacy-invoke/`.
+   `@vX.Y.Z` version in the README examples.
 
 ## Reporting
 
