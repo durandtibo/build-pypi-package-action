@@ -2,9 +2,9 @@
 
 ## Supported Versions
 
-Security fixes are only released for the latest release of the action, published under the
-floating major tag (e.g. `v1`) and as an immutable `vX.Y.Z` tag. Older releases are not patched,
-so please upgrade to the latest release before reporting an issue.
+Security fixes are only released for the latest release of the action, published as an immutable
+`vX.Y.Z` tag. There are no floating tags. Older releases are not patched, so please upgrade to the
+latest release before reporting an issue.
 
 ## Reporting a Vulnerability
 
@@ -59,5 +59,5 @@ publish to PyPI and needs no secrets.
   `twine-version` and `twine-exclude-newer` inputs. Overriding them is your responsibility.
 - **PyPI duplicate check**: the check queries the public PyPI JSON API for the package name and
   version. Only an HTTP 404 means "not published"; any other answer fails the build.
-- **Pin the action**: reference the action by commit SHA in your workflows, as the floating major
-  tag moves with each release.
+- **Pin the action**: reference the action by commit SHA (or a full `vX.Y.Z` tag) in your
+  workflows. Release tags are immutable and there are no floating tags.
