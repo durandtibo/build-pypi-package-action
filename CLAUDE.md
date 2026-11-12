@@ -134,10 +134,10 @@ false` until the last release has the feature; the nightly workflow runs only th
 1. Merge to `main` with green checks, including `nightly.yaml` on the previous release.
 2. Tag the commit `vX.Y.Z` (immutable) and create the GitHub release; list breaking changes in the
    notes.
-3. Move the floating major tag to the same commit (`git tag -f vX && git push -f origin vX`).
+3. Do not create or move a floating major tag (`vX`): releases are only immutable `vX.Y.Z` tags.
 4. Update the version and SHA in the `uses:` refs and in the header of
    `nightly-test-released.yaml`, flip `released` to `true` in `test/cases.json` for the features of the new release, and update the
-   README examples if the major version changed. Once the release no longer writes `SHA256SUMS` and builds
+   `@vX.Y.Z` version in the README examples. Once the release no longer writes `SHA256SUMS` and builds
    with uv directly, also remove the `assert_released_*` helpers and `test/fixtures/legacy-invoke/`.
 
 ## Reporting
