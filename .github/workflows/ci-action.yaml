@@ -5,7 +5,8 @@
 # stale dist/, plain version outside manual runs, import name different from the
 # distribution name) and the failure paths (failing
 # build, invalid metadata, unimportable package, already-published version,
-# plain or post-release version on a manual run). Failure jobs also assert the
+# plain or post-release version on a manual run, missing metadata fields, packaged
+# .env file, local version, broken entry point). Failure jobs also assert the
 # failed-check output, i.e. that the action failed for the expected reason.
 # Safe to run on every push/PR: no publishing or signing involved.
 
@@ -432,6 +433,126 @@ jobs:
           source scripts/test-helper.sh
           assert_failure "build-package (wrong import-name)" "${OUTCOME}"
           assert_failed_check smoke-wheel "${FAILED_CHECK}"
+
+  # build-package must fail closed on a wheel without Requires-Python (pip would install it on unsupported Pythons).
+  reject-missing-metadata-fields:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-no-requires-python/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed at the expected check
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (a wheel without Requires-Python)" "${OUTCOME}"
+          assert_failed_check metadata-fields "${FAILED_CHECK}"
+
+  # build-package must fail closed on a package that ships a .env file.
+  reject-unwanted-files:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-secret-file/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed at the expected check
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (a package that ships a .env file)" "${OUTCOME}"
+          assert_failed_check unwanted-files "${FAILED_CHECK}"
+
+  # build-package must fail closed on a local version (1.0.0+local), which PyPI rejects.
+  reject-local-version:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-local-version/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed at the expected check
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (a local version)" "${OUTCOME}"
+          assert_failed_check local-version "${FAILED_CHECK}"
+
+  # build-package must fail closed on a console script that does not resolve to an importable object.
+  reject-bad-entry-point:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-bad-entry-point/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed at the expected check
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+          FAILED_CHECK: ${{ steps.build.outputs.failed-check }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (a console script that does not resolve to an importable object)" "${OUTCOME}"
+          assert_failed_check entry-points "${FAILED_CHECK}"
 
   # The smoke test must fail closed when a package builds but cannot be imported.
   reject-import-failure:

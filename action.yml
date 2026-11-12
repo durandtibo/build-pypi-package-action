@@ -34,6 +34,9 @@ outputs:
       ${{ steps.build.outputs.failed-check || steps.dist-contents.outputs.failed-check
       || steps.twine.outputs.failed-check || steps.manual-version.outputs.failed-check
       || steps.tag.outputs.failed-check || steps.published.outputs.failed-check
+      || steps.metadata-fields.outputs.failed-check || steps.artifact-mismatch.outputs.failed-check
+      || steps.unwanted-files.outputs.failed-check || steps.size.outputs.failed-check
+      || steps.local-version.outputs.failed-check || steps.entry-points.outputs.failed-check
       || steps.import.outputs.failed-check || steps.smoke-wheel.outputs.failed-check
       || steps.smoke-sdist.outputs.failed-check }}
 
@@ -124,11 +127,109 @@ runs:
         )
         { echo "name=${name}"; echo "version=${version}"; echo "canonical-name=${canonical}"; echo "module=${module}"; } >> "$GITHUB_OUTPUT"
 
+    # Metadata PyPI and installers rely on: without Requires-Python pip installs the
+    # package on Python versions it does not support; without Summary the project
+    # page is blank.
+    - name: 1.5 Check required metadata fields
+      id: metadata-fields
+      shell: bash
+      run: |
+        source "${RUNNER_TEMP}/fail.sh"
+        missing=$(uv run --no-project python -I - dist/*.whl <<'PY' | tr -d '\r'
+        import sys, zipfile
+        from email.parser import Parser
+        with zipfile.ZipFile(sys.argv[1]) as z:
+            meta = Parser().parsestr(z.read(next(n for n in z.namelist() if n.endswith(".dist-info/METADATA"))).decode())
+        print(*[k for k in ("Summary", "Requires-Python") if not meta[k]])
+        PY
+        )
+        [[ -z "${missing}" ]] ||
+          fail metadata-fields "Required metadata missing" "The wheel has no: ${missing}." \
+            "Set description and requires-python in [project] of pyproject.toml."
+
+    # The wheel and the sdist must describe the same release; a mismatch means a
+    # backend that rewrites the name or version differently per format.
+    - name: 1.6 Check wheel and sdist agree
+      id: artifact-mismatch
+      shell: bash
+      env:
+        NAME: ${{ steps.metadata.outputs.canonical-name }}
+        VERSION: ${{ steps.metadata.outputs.version }}
+      run: |
+        source "${RUNNER_TEMP}/fail.sh"
+        sdist=$(uv run --no-project python -I - dist/*.tar.gz <<'PY' | tr -d '\r'
+        import re, sys, tarfile
+        from email.parser import Parser
+        with tarfile.open(sys.argv[1]) as t:
+            m = next(m for m in t.getmembers() if m.name.count("/") == 1 and m.name.endswith("/PKG-INFO"))
+            meta = Parser().parsestr(t.extractfile(m).read().decode())
+        print(re.sub(r"[-_.]+", "-", meta["Name"]).lower(), meta["Version"])
+        PY
+        )
+        [[ "${sdist}" == "${NAME} ${VERSION}" ]] ||
+          fail artifact-mismatch "Wheel and sdist disagree" \
+            "Wheel is ${NAME} ${VERSION}, sdist is ${sdist}." \
+            "Build both from the same source; check the dynamic name and version settings of the backend."
+
+    # Files that must never ship: secrets, VCS data, caches. Example files such as
+    # .env.example are allowed.
+    - name: 1.7 Check no unwanted files are packaged
+      id: unwanted-files
+      shell: bash
+      run: |
+        source "${RUNNER_TEMP}/fail.sh"
+        found=$(uv run --no-project python -I - dist/*.whl dist/*.tar.gz <<'PY' | tr -d '\r'
+        import re, sys, tarfile, zipfile
+        bad = re.compile(r"(^|/)(\.env(\.(?!example$|sample$|template$)[^/]*)?|\.git|\.pypirc|id_(rsa|ed25519)|[^/]*\.pem|__pycache__|\.DS_Store)(/|$)|\.pyc$")
+        names = zipfile.ZipFile(sys.argv[1]).namelist() + tarfile.open(sys.argv[2]).getnames()
+        print(*sorted({n for n in names if bad.search(n)}))
+        PY
+        )
+        [[ -z "${found}" ]] ||
+          fail unwanted-files "Unwanted files in the package" "Found: ${found}" \
+            "Exclude them in the build backend config (e.g. hatch exclude, MANIFEST.in) and rotate any leaked secret."
+
+    # PyPI rejects files over 100 MiB by default; fail here instead of at upload time.
+    - name: 1.8 Check file sizes
+      id: size
+      shell: bash
+      run: |
+        source "${RUNNER_TEMP}/fail.sh"
+        for f in dist/*; do
+          size=$(wc -c < "${f}")
+          (( size <= 100 * 1024 * 1024 )) ||
+            fail size "File too large for PyPI" "${f} is ${size} bytes; PyPI's default limit is 100 MiB." \
+              "Exclude data and build artifacts from the package, or request a limit increase from PyPI."
+        done
+
+    # A platform-specific wheel built on one runner does not cover the other
+    # platforms. Warn only: compiled packages are legitimate.
+    - name: 1.9 Warn on platform-specific wheel
+      shell: bash
+      run: |
+        wheel=$(basename dist/*.whl)
+        [[ "${wheel}" == *-none-any.whl ]] ||
+          echo "::warning title=Platform-specific wheel::${wheel} only installs on one platform; build the other platforms separately."
+
     # ---- 2.x Release guards -------------------------------------------------
+    # PyPI rejects local versions ("1.2.3+abc"), typical of setuptools-scm on
+    # untagged commits.
+    - name: 2.1 Check version has no local segment
+      id: local-version
+      shell: bash
+      env:
+        VERSION: ${{ steps.metadata.outputs.version }}
+      run: |
+        source "${RUNNER_TEMP}/fail.sh"
+        [[ "${VERSION}" != *+* ]] ||
+          fail local-version "Local version cannot be published" \
+            "${VERSION} has a local segment (+...), which PyPI rejects." \
+            "Build from a tagged commit, or configure the version scheme to drop local versions."
+
     # Whitelist: a manual run must publish a pre-release (aN, bN, rcN, .devN).
     # The version comes from the wheel, so it is already PEP 440 normalized.
     # The local segment (+...) is stripped first so it cannot fake a pre-release.
-    - name: 2.1 Check manual run uses a pre-release version
+    - name: 2.2 Check manual run uses a pre-release version
       id: manual-version
       if: github.event_name == 'workflow_dispatch'
       shell: bash
@@ -145,7 +246,7 @@ runs:
             "Use a pre-release version (e.g. ${base}a1 or ${base}.dev1), or publish by pushing the tag v${VERSION}."
 
     # Rule: the tag must be exactly "v" + the normalized version.
-    - name: 2.2 Check tag matches version
+    - name: 2.3 Check tag matches version
       id: tag
       if: startsWith(github.ref, 'refs/tags/')
       shell: bash
@@ -161,7 +262,7 @@ runs:
 
     # Only a 404 proves "not published"; a 200 is a duplicate and any other
     # answer (network error -> 000, 429, 5xx) fails closed.
-    - name: 2.3 Check version not already on PyPI
+    - name: 2.4 Check version not already on PyPI
       id: published
       shell: bash
       env:
@@ -222,6 +323,21 @@ runs:
           fail smoke-sdist "Distribution cannot be imported" \
             "Building the sdist in a clean environment and importing ${MODULE} failed (output above)." \
             "Check that the sdist contains the sources and build files (tar tzf dist/*.tar.gz), or set import-name if ${MODULE} is the wrong name."
+
+    # Every declared entry point (console scripts, plugins) must resolve to an
+    # importable object: a typo there installs fine and fails only when the user
+    # runs the command.
+    - name: 3.4 Smoke test entry points
+      id: entry-points
+      shell: bash
+      env:
+        NAME: ${{ steps.metadata.outputs.name }}
+      run: |
+        source "${RUNNER_TEMP}/fail.sh"
+        uv run --isolated --no-project --with dist/*.whl -- python -I -c "import os; from importlib.metadata import distribution; [ep.load() for ep in distribution(os.environ['NAME']).entry_points]" ||
+          fail entry-points "Entry point cannot be loaded" \
+            "An entry point of ${NAME} failed to load (output above)." \
+            "Check the [project.scripts] and [project.entry-points] targets for typos and import errors."
 
     # ---- 4.x Report and upload ----------------------------------------------
     - name: 4.1 Generate checksums

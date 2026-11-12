@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pypi-release-action-fixture"
+version = "0.0.1a1+local"
+description = "Throwaway fixture with a local version, used to test that versions PyPI rejects are caught."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pypi_release_action_fixture"]

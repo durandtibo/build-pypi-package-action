@@ -48,16 +48,24 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
   `pyproject.toml`, so static and dynamic versions behave the same and the guards check what is
   uploaded. It also detects the import name: `top_level.txt` if the wheel has one, else the first
   top-level package (directory with `__init__.py`), else the first top-level module.
+- `1.5` fails if the wheel has no `Summary` or no `Requires-Python` (`metadata-fields`).
+- `1.6` fails if the wheel and the sdist have a different name or version (`artifact-mismatch`).
+- `1.7` fails if either file contains `.env` (not `.env.example`), `.git`, `.pypirc`, SSH keys, `.pem`
+  files, `__pycache__`, `.pyc` or `.DS_Store` (`unwanted-files`).
+- `1.8` fails if a file exceeds PyPI's default 100 MiB limit (`size`).
+- `1.9` only warns about a platform-specific wheel, which one runner cannot cover for every platform.
 
 **2.x Release guards**
 
-- `2.1` **manual runs:** on `workflow_dispatch`, fails unless the version is a pre-release (contains
+- `2.1` fails on a local version such as `1.2.3+abc` (setuptools-scm on an untagged commit), which PyPI
+  rejects (`local-version`).
+- `2.2` **manual runs:** on `workflow_dispatch`, fails unless the version is a pre-release (contains
   `aN`, `bN`, `rcN` or `.devN`, e.g. `1.2.3a1`, `1.2.3.dev1`). Final and post releases (`1.2.3`,
   `1.2.3.post1`) must go through a tag push (`manual-version`).
-- `2.2` **tag pushes:** on any tag push (`refs/tags/*`), fails unless the tag is exactly `v` + the
+- `2.3` **tag pushes:** on any tag push (`refs/tags/*`), fails unless the tag is exactly `v` + the
   normalized package version (`v1.2.3` for `1.2.3`; `v1.0.0-rc1` is rejected, the tag is `v1.0.0rc1`)
   (`tag`).
-- `2.3` **duplicate releases:** queries `https://pypi.org/pypi/<name>/<version>/json` (name normalized
+- `2.4` **duplicate releases:** queries `https://pypi.org/pypi/<name>/<version>/json` (name normalized
   per PEP 503, 20 s timeout, 3 retries). Only an HTTP 404 passes: a 200 fails because the version is
   published, and any other answer (network error, 429, 5xx) fails too because the check could not prove
   the version is free. It does not detect versions on other indexes (e.g. TestPyPI) (`published`).
@@ -68,6 +76,9 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
   It fails if neither is available (`import`).
 - `3.2` and `3.3` install the wheel and the sdist, each into a throwaway environment, and import that
   module in isolated mode (`smoke-wheel`, `smoke-sdist`).
+- `3.4` loads every declared entry point (console scripts, plugins) from the installed wheel, so a typo
+  in `[project.scripts]` fails here and not when a user runs the command (`entry-points`). An entry
+  point that needs an optional dependency which is not installed fails this check too.
 
 **4.x Report and upload**
 
@@ -121,9 +132,10 @@ other versions, so run your own test matrix separately.
 and are available once step `1.4` has run. If an earlier step fails, the action fails and they are
 empty.
 
-`failed-check` is one of `build`, `dist-contents`, `twine`, `manual-version`, `tag`, `published`,
-`import`, `smoke-wheel`, `smoke-sdist`. It is meant for diagnostics and tests: the annotation and the job
-summary already say what failed and how to fix it. To read it after a failure, set
+`failed-check` is one of `build`, `dist-contents`, `twine`, `metadata-fields`, `artifact-mismatch`,
+`unwanted-files`, `size`, `local-version`, `manual-version`, `tag`, `published`, `import`,
+`smoke-wheel`, `smoke-sdist`, `entry-points`. It is meant for diagnostics and tests: the annotation
+and the job summary already say what failed and how to fix it. To read it after a failure, set
 `continue-on-error: true` on the action step.
 
 ## Usage

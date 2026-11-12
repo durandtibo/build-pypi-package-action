@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pypi-release-action-fixture"
+version = "0.0.1a1"
+description = "Throwaway fixture with a broken console script, used to test that entry points must resolve."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pypi_release_action_fixture"]
+
+[project.scripts]
+# Deliberately points at an object that does not exist.
+fixture-cli = "pypi_release_action_fixture:does_not_exist"
