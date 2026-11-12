@@ -14,6 +14,10 @@ inputs:
     description: Name of the uploaded distribution artifact
     required: false
     default: "dist"
+  import-name:
+    description: Module imported by the smoke test (default is detected from the wheel)
+    required: false
+    default: ""
 
 outputs:
   package-name:
@@ -30,7 +34,8 @@ outputs:
       ${{ steps.build.outputs.failed-check || steps.dist-contents.outputs.failed-check
       || steps.twine.outputs.failed-check || steps.manual-version.outputs.failed-check
       || steps.tag.outputs.failed-check || steps.published.outputs.failed-check
-      || steps.smoke-wheel.outputs.failed-check || steps.smoke-sdist.outputs.failed-check }}
+      || steps.import.outputs.failed-check || steps.smoke-wheel.outputs.failed-check
+      || steps.smoke-sdist.outputs.failed-check }}
 
 runs:
   using: composite
@@ -97,20 +102,27 @@ runs:
 
     # Name and version come from the wheel that will be uploaded, not from a
     # second parser of pyproject.toml, so static and dynamic versions behave alike.
-    # canonical-name is the PEP 503 form used for the PyPI lookup.
+    # canonical-name is the PEP 503 form used for the PyPI lookup. module is the
+    # import name: top_level.txt if present, else the first top-level package
+    # (directory with __init__.py), else the first top-level .py file, else "-".
     - name: 1.4 Read package metadata
       id: metadata
       shell: bash
       run: |
-        read -r name version canonical < <(uv run --no-project python -I - dist/*.whl <<'PY' | tr -d '\r'
+        read -r name version canonical module < <(uv run --no-project python -I - dist/*.whl <<'PY' | tr -d '\r'
         import re, sys, zipfile
         from email.parser import Parser
         with zipfile.ZipFile(sys.argv[1]) as z:
-            meta = Parser().parsestr(z.read(next(n for n in z.namelist() if n.endswith(".dist-info/METADATA"))).decode())
-        print(meta["Name"], meta["Version"], re.sub(r"[-_.]+", "-", meta["Name"]).lower())
+            names = sorted(z.namelist())
+            meta = Parser().parsestr(z.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode())
+            top = next((n for n in names if n.endswith(".dist-info/top_level.txt")), None)
+            pkgs = [n.split("/")[0] for n in names if n.count("/") == 1 and n.endswith("/__init__.py")]
+            mods = [n[:-3] for n in names if "/" not in n and n.endswith(".py")]
+            found = (z.read(top).decode().split() if top else []) + pkgs + mods
+        print(meta["Name"], meta["Version"], re.sub(r"[-_.]+", "-", meta["Name"]).lower(), found[0] if found else "-")
         PY
         )
-        { echo "name=${name}"; echo "version=${version}"; echo "canonical-name=${canonical}"; } >> "$GITHUB_OUTPUT"
+        { echo "name=${name}"; echo "version=${version}"; echo "canonical-name=${canonical}"; echo "module=${module}"; } >> "$GITHUB_OUTPUT"
 
     # ---- 2.x Release guards -------------------------------------------------
     # Whitelist: a manual run must publish a pre-release (aN, bN, rcN, .devN).
@@ -170,35 +182,46 @@ runs:
         esac
 
     # ---- 3.x Smoke tests ----------------------------------------------------
+    # The explicit import-name input wins over the module detected from the wheel.
+    - name: 3.1 Resolve import name
+      id: import
+      shell: bash
+      env:
+        MODULE: ${{ inputs.import-name || steps.metadata.outputs.module }}
+      run: |
+        source "${RUNNER_TEMP}/fail.sh"
+        [[ "${MODULE}" != "-" ]] ||
+          fail import "Import name not detected" \
+            "The wheel has no top_level.txt, no package directory and no top-level module, so the module to import is unknown." \
+            "Set the import-name input."
+        echo "module=${MODULE}" >> "$GITHUB_OUTPUT"
+
     # Install each artifact into a throwaway environment without the project
     # and import it in isolated mode (-I), so the source tree cannot mask a
     # broken artifact (e.g. a flat-layout package missing from the wheel).
-    # The module name is the distribution name with "-" and "." replaced by "_".
-    - name: 3.1 Smoke test wheel
+    - name: 3.2 Smoke test wheel
       id: smoke-wheel
       shell: bash
       env:
-        NAME: ${{ steps.metadata.outputs.name }}
+        MODULE: ${{ steps.import.outputs.module }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
-        module=$(echo "${NAME}" | tr '.-' '_')
-        uv run --isolated --no-project --with dist/*.whl -- python -I -c "import importlib, sys; importlib.import_module(sys.argv[1])" "${module}" ||
-          fail smoke-wheel "Wheel cannot be imported" \
-            "Installing the wheel into a clean environment and importing ${module} failed (output above)." \
-            "Check that the wheel contains the package (unzip -l dist/*.whl)."
+        uv run --isolated --no-project --with dist/*.whl -- python -I -c "import os, importlib; importlib.import_module(os.environ['MODULE'])" ||
+          fail smoke-wheel "Distribution cannot be imported" \
+            "Installing the wheel into a clean environment and importing ${MODULE} failed (output above)." \
+            "Check that the wheel contains the package (unzip -l dist/*.whl), or set import-name if ${MODULE} is the wrong name."
 
-    - name: 3.2 Smoke test sdist
+    - name: 3.3 Smoke test sdist
       id: smoke-sdist
       shell: bash
       env:
-        NAME: ${{ steps.metadata.outputs.name }}
+        MODULE: ${{ steps.import.outputs.module }}
       run: |
         source "${RUNNER_TEMP}/fail.sh"
-        module=$(echo "${NAME}" | tr '.-' '_')
-        uv run --isolated --no-project --with dist/*.tar.gz -- python -I -c "import importlib, sys; importlib.import_module(sys.argv[1])" "${module}" ||
-          fail smoke-sdist "Sdist cannot be built or imported" \
-            "Building the sdist in a clean environment and importing ${module} failed (output above)." \
-            "Check that the sdist contains the sources and build files (tar tzf dist/*.tar.gz)."
+        uv run --isolated --no-project --with dist/*.tar.gz -- python -I -c "import os, importlib; importlib.import_module(os.environ['MODULE'])" ||
+          fail smoke-sdist "Distribution cannot be imported" \
+            "Building the sdist in a clean environment and importing ${MODULE} failed (output above)." \
+            "Check that the sdist contains the sources and build files (tar tzf dist/*.tar.gz), or set import-name if ${MODULE} is the wrong name."
 
     # ---- 4.x Report and upload ----------------------------------------------
     - name: 4.1 Generate checksums

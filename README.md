@@ -46,7 +46,8 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 - `1.3` validates the metadata with a pinned `twine check --strict` (`twine`).
 - `1.4` reads the package name and version from the built wheel's metadata, not from a second parser of
   `pyproject.toml`, so static and dynamic versions behave the same and the guards check what is
-  uploaded.
+  uploaded. It also detects the import name: `top_level.txt` if the wheel has one, else the first
+  top-level package (directory with `__init__.py`), else the first top-level module.
 
 **2.x Release guards**
 
@@ -63,8 +64,10 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
 **3.x Smoke tests**
 
-- `3.1` and `3.2` install the wheel and the sdist, each into a throwaway environment, and import the
-  package in isolated mode (`smoke-wheel`, `smoke-sdist`).
+- `3.1` picks the module to import: the `import-name` input if set, else the one detected in `1.4`.
+  It fails if neither is available (`import`).
+- `3.2` and `3.3` install the wheel and the sdist, each into a throwaway environment, and import that
+  module in isolated mode (`smoke-wheel`, `smoke-sdist`).
 
 **4.x Report and upload**
 
@@ -87,19 +90,21 @@ The calling repo must provide, at its root:
 | `pyproject.toml` | Must resolve a `name` and `version` (static or dynamic). |
 
 - The calling job must check out the repo (`actions/checkout`) before this action runs.
-- The package must be buildable with `uv build` (any PEP 517 build backend), and its importable module
-  name must match the distribution name with `-` and `.` replaced by `_` (e.g. `my-package` →
-  `my_package`), because the smoke test imports that module.
+- The package must be buildable with `uv build` (any PEP 517 build backend). The smoke test imports
+  the module detected from the wheel; it does not have to match the distribution name (`pyyaml` →
+  `yaml`). Set `import-name` if the detection picks the wrong module (e.g. several top-level
+  packages).
 - The action builds in the repo root and writes to `dist/`. Existing contents of `dist/` are removed
   first.
 - `dist/` must end up with exactly one wheel and one sdist (`.tar.gz`).
 
 ## Inputs
 
-| Name             | Description                                              | Required | Default |
-| ---------------- | -------------------------------------------------------- | -------- | ------- |
-| `python-version` | Python version used to build and smoke-test the package. | No       | `3.14`  |
-| `artifact-name`  | Name of the uploaded distribution artifact.              | No       | `dist`  |
+| Name             | Description                                                   | Required | Default                 |
+| ---------------- | ------------------------------------------------------------- | -------- | ----------------------- |
+| `python-version` | Python version used to build and smoke-test the package.      | No       | `3.14`                  |
+| `artifact-name`  | Name of the uploaded distribution artifact.                   | No       | `dist`                  |
+| `import-name`    | Module imported by the smoke test (e.g. `yaml` for `pyyaml`). | No       | detected from the wheel |
 
 The `python-version` is used for the build and for the smoke test; the package is not tested against
 other versions, so run your own test matrix separately.
@@ -117,7 +122,7 @@ and are available once step `1.4` has run. If an earlier step fails, the action 
 empty.
 
 `failed-check` is one of `build`, `dist-contents`, `twine`, `manual-version`, `tag`, `published`,
-`smoke-wheel`, `smoke-sdist`. It is meant for diagnostics and tests: the annotation and the job
+`import`, `smoke-wheel`, `smoke-sdist`. It is meant for diagnostics and tests: the annotation and the job
 summary already say what failed and how to fix it. To read it after a failure, set
 `continue-on-error: true` on the action step.
 
