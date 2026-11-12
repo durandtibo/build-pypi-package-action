@@ -340,17 +340,7 @@ runs:
             "Check the [project.scripts] and [project.entry-points] targets for typos and import errors."
 
     # ---- 4.x Report and upload ----------------------------------------------
-    - name: 4.1 Generate checksums
-      shell: bash
-      run: |
-        cd dist
-        if command -v sha256sum >/dev/null 2>&1; then
-          sha256sum -- *.tar.gz *.whl > SHA256SUMS
-        else
-          shasum -a 256 -- *.tar.gz *.whl > SHA256SUMS
-        fi
-
-    - name: 4.2 Write job summary
+    - name: 4.1 Write job summary
       shell: bash
       env:
         NAME: ${{ steps.metadata.outputs.name }}
@@ -359,7 +349,7 @@ runs:
         printf '### :white_check_mark: %s %s\n\nBuilt and checked: %s\n' \
           "${NAME}" "${VERSION}" "$(ls dist | tr '\n' ' ')" >> "$GITHUB_STEP_SUMMARY"
 
-    - name: 4.3 Upload distributions
+    - name: 4.2 Upload distributions
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # ratchet:actions/upload-artifact@v7.0.2
       with:
         name: ${{ inputs.artifact-name }}
