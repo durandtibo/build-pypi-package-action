@@ -225,14 +225,22 @@ The `.make/` directory is shared with other repos and synced automatically by
 
 The action can only be exercised end to end on GitHub Actions; there is no local test run.
 
-- `test/fixtures/` holds throwaway packages (success path, edge cases such as dotted names and dynamic
-  versions, and failure paths such as a failing build, invalid metadata, an unimportable package, an
-  already-published version, and a plain version on a manual run). They are not part of the action.
+- `test/fixtures/` holds throwaway packages (success path, edge cases such as dotted names, dynamic
+  versions and an import name that differs from the distribution name, and failure paths such as a
+  failing build, invalid metadata, an unimportable package, an already-published version, a missing
+  `Requires-Python`, a packaged `.env`, a local version, a broken entry point, and a plain or post
+  version on a manual run). They are not part of the action.
 - `scripts/test-helper.sh` holds the assertions shared by the test workflows.
 - `ci-action.yaml` runs the action from the current checkout (`uses: ./`) against the fixtures on
-  Linux, macOS, and Windows, and on every Python version on Linux. Failure jobs assert the
-  `failed-check` output, so they prove the action failed for the expected reason.
-- `nightly-test-released.yaml` runs the same tests against the last stable release.
+  Linux, macOS, and Windows, and on every Python version on Linux. Its jobs are driven by case tables:
+  `accept` (packages that must build) and `reject` (packages that must fail, with the `failed-check`
+  id that the failure must carry). A new case is a new row.
+- `reject-manual` only runs on `workflow_dispatch` and `reject-tag-mismatch` only when the workflow is
+  run by hand on a tag ref (`gh workflow run ci.yaml --ref <tag>`), because a pull request job cannot
+  reproduce those triggers. All other jobs are skipped on a tag ref.
+- `nightly-test-released.yaml` has the same structure and tables and tests the last stable release. It
+  only asserts the outcome and the failure stage, because the release has no `failed-check` output
+  yet, and it lacks the rows of features that are not released yet.
 
 ### Workflows
 
