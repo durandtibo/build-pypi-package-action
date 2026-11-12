@@ -33,7 +33,7 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
 **0.x Setup**
 
-- `0.1` installs a pinned `uv` and the requested Python version
+- `0.1` installs `uv` (version from `uv-version`) and the requested Python version
   ([`astral-sh/setup-uv`](https://github.com/astral-sh/setup-uv), without cache: a release build never
   consumes or writes one).
 - `0.2` defines the `fail` helper used by every later step. It records the id of the failed check
@@ -59,8 +59,8 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 - `1.7` fails if a file exceeds PyPI's default 100 MiB limit (`size`).
 - `1.8` only warns about a platform-specific wheel, which one runner cannot cover for every platform.
 - `1.9` validates the metadata with `twine check --strict` (`twine`). It runs last, after the cheap
-  local checks, because it needs a download. `twine` is pinned, and so are its dependencies
-  (`uvx --exclude-newer <date>`), so the check is reproducible.
+  local checks, because it needs a download. `twine` is pinned (`twine-version`), and so are its dependencies
+  (`uvx --exclude-newer`, from `twine-exclude-newer`), so the check is reproducible.
 
 **2.x Release guards**
 
@@ -118,11 +118,19 @@ The calling repo must provide, at its root:
 
 ## Inputs
 
-| Name             | Description                                                   | Required | Default                 |
-| ---------------- | ------------------------------------------------------------- | -------- | ----------------------- |
-| `python-version` | Python version used to build and smoke-test the package.      | No       | `3.14`                  |
-| `artifact-name`  | Name of the uploaded distribution artifact.                   | No       | `dist`                  |
-| `import-name`    | Module imported by the smoke test (e.g. `yaml` for `pyyaml`). | No       | resolved from the wheel |
+| Name                  | Description                                                                                                         | Required | Default                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------- |
+| `python-version`      | Python version used to build and smoke-test the package.                                                            | No       | `3.14`                  |
+| `artifact-name`       | Name of the uploaded distribution artifact.                                                                         | No       | `dist`                  |
+| `import-name`         | Module imported by the smoke test (e.g. `yaml` for `pyyaml`).                                                       | No       | resolved from the wheel |
+| `uv-version`          | Version of `uv` to install.                                                                                         | No       | `0.13.7`                |
+| `twine-version`       | Version of `twine` used by `twine check`.                                                                           | No       | `7.0.0`                 |
+| `twine-exclude-newer` | Date (`YYYY-MM-DD`) after which packages are ignored when resolving `twine` and its dependencies; empty to disable. | No       | `2026-11-01`            |
+
+`uv-version`, `twine-version` and `twine-exclude-newer` default to the versions this release was tested
+with, so builds are reproducible. Override them to use other versions. A `twine-version` published
+after `twine-exclude-newer` cannot be resolved: move the date forward, or set it to an empty string
+(then `twine`'s dependencies are no longer pinned).
 
 The `python-version` is used for the build and for the smoke test; the package is not tested against
 other versions, so run your own test matrix separately.
@@ -252,6 +260,7 @@ Breaking changes:
 - **The tag must be exactly `v` + the normalized version** (`v1.0.0rc1`, not `v1.0.0-rc1`).
 - **`smoke-sdist` and `artifact-mismatch` are removed.** `uv build` builds the wheel from the sdist, so
   neither could fail independently of the wheel checks.
+- New inputs `uv-version`, `twine-version` and `twine-exclude-newer` (defaults are the tested pins).
 - New output `failed-check` (an id, or `unexpected`); `twine` is pinned and the `uv` cache is disabled.
 
 ## Development
