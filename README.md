@@ -278,15 +278,17 @@ The action can only be exercised end to end on GitHub Actions; there is no local
   version on a manual run). They are not part of the action.
 - `scripts/test-helper.sh` holds the assertions shared by the test workflows.
 - `ci-action.yaml` runs the action from the current checkout (`uses: ./`) against the fixtures on
-  Linux, macOS, and Windows, and on every Python version on Linux. Its jobs are driven by case tables:
-  `accept` (packages that must build) and `reject` (packages that must fail, with the `failed-check`
-  id that the failure must carry). A new case is a new row.
+  Linux, macOS, and Windows, and on every Python version on Linux. Its jobs are driven by the case tables
+  of `test/cases.json`: `accept` (packages that must build) and `reject` (packages that must fail,
+  with the `failed-check` id that the failure must carry). A new case is a new row in that one file.
+  `scripts/load-cases.sh` turns it into the job matrices.
 - `reject-manual` only runs on `workflow_dispatch` and `reject-tag-mismatch` only when the workflow is
   run by hand on a tag ref (`gh workflow run ci.yaml --ref <tag>`), because a pull request job cannot
   reproduce those triggers. All other jobs are skipped on a tag ref.
-- `nightly-test-released.yaml` has the same structure and tables and tests the last stable release. It
-  only asserts the outcome and the failure stage, because the release has no `failed-check` output
-  yet, and it lacks the rows of features that are not released yet.
+- `nightly-test-released.yaml` has the same structure and tests the last stable release with the rows
+  of `test/cases.json` marked `"released": true`; the other rows are for features that are not
+  released yet. It only asserts the outcome and the failure stage, because the release has no
+  `failed-check` output yet.
 
 ### Workflows
 

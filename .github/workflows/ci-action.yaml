@@ -1,15 +1,15 @@
 # Workflow testing the action from the current repository code (uses: ./),
 # i.e. the version that is not released yet, on Linux, macOS, and Windows.
 # It builds the throwaway packages of test/fixtures/ and is structured as:
+#   - cases: loads the case tables of test/cases.json (every row);
 #   - build, build-python: the success path (every OS, every Python version);
 #   - accept: a table of packages that must build (dotted name, dynamic version,
 #     stale dist/, import name different from the distribution name);
 #   - reject, reject-manual, reject-tag-mismatch: tables of packages that must be
 #     rejected, with the failed-check id that the rejection must carry;
 #   - verify-artifact: the uploaded artifacts hold exactly the wheel and the sdist.
-# A new case is a new row in a table. The same tables are in
-# nightly-test-released.yaml, which tests the last release; add the row there once a
-# release has the feature. Safe to run on every push/PR: no publishing or signing.
+# A new case is a new row in test/cases.json. nightly-test-released.yaml runs the
+# rows marked "released": true against the last release. Safe to run on every push/PR: no publishing or signing.
 #
 # Cases that depend on the trigger cannot be reproduced by a PR job:
 #   - reject-manual and the manual `accept-plain-version-outside-manual-run`
@@ -30,6 +30,26 @@ on:
 permissions: {}
 
 jobs:
+  # Matrices of the accept and reject jobs, from test/cases.json (every row).
+  cases:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      accept: ${{ steps.load.outputs.accept }}
+      reject: ${{ steps.load.outputs.reject }}
+      reject-manual: ${{ steps.load.outputs.reject-manual }}
+      reject-tag-mismatch: ${{ steps.load.outputs.reject-tag-mismatch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Load cases
+        id: load
+        shell: bash
+        run: scripts/load-cases.sh all
+
   # Build the fixture package on every OS (Linux, macOS, Windows)
   build:
     if: github.ref_type != 'tag'
@@ -120,6 +140,7 @@ jobs:
   accept:
     name: accept (${{ matrix.case }})
     if: github.ref_type != 'tag'
+    needs: cases
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -127,40 +148,7 @@ jobs:
     strategy:
       max-parallel: 8
       fail-fast: false
-      matrix:
-        include:
-          - case: dotted-name
-            fixture: pkg-dotted-name
-            name: pypi.release-action.fixture
-            version: 0.0.1a1
-          - case: dynamic-version
-            fixture: pkg-dynamic-version
-            name: pypi-release-action-fixture
-            version: 0.0.1a1
-          - case: stale-dist
-            fixture: pkg
-            name: pypi-release-action-fixture
-            version: 0.0.1a1
-            stale: true
-          - case: import-name-detected
-            fixture: pkg-import-name
-            name: pypi-release-action-fixture-alt
-            version: 0.0.1a1
-          - case: import-name-explicit
-            fixture: pkg-import-name
-            name: pypi-release-action-fixture-alt
-            version: 0.0.1a1
-            import-name: fixture_alt
-          # docs/ sorts first and cannot be imported: the distribution name must win
-          - case: import-name-matches-distribution
-            fixture: pkg-multi-module
-            name: pypi-release-action-fixture-multi
-            version: 0.0.1a1
-          # _helper/ sorts first and cannot be imported: private names are skipped
-          - case: import-name-skips-private
-            fixture: pkg-private-module
-            name: pypi-release-action-fixture-private
-            version: 0.0.1a1
+      matrix: ${{ fromJson(needs.cases.outputs.accept) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
@@ -214,50 +202,14 @@ jobs:
   reject:
     name: reject (${{ matrix.case }})
     if: github.ref_type != 'tag'
+    needs: cases
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - case: build-failure
-            fixture: pkg-build-failure
-            expected: build
-          - case: invalid-metadata
-            fixture: pkg-invalid-metadata
-            expected: twine
-          - case: already-published
-            fixture: pkg-published
-            expected: published
-          - case: import-failure
-            fixture: pkg-import-failure
-            expected: smoke-wheel
-          - case: no-requires-python
-            fixture: pkg-no-requires-python
-            expected: metadata-fields
-          - case: secret-file
-            fixture: pkg-secret-file
-            expected: unwanted-files
-          - case: local-version
-            fixture: pkg-local-version
-            expected: local-version
-          - case: bad-entry-point
-            fixture: pkg-bad-entry-point
-            expected: entry-points
-          - case: wrong-import-name
-            fixture: pkg-import-name
-            expected: smoke-wheel
-            import-name: not_the_module
-          - case: ambiguous-import-name
-            fixture: pkg-ambiguous-import
-            expected: import
-          # `stage` runs a helper of scripts/test-helper.sh before the action
-          - case: oversized-file
-            fixture: pkg
-            expected: size
-            stage: oversized
+      matrix: ${{ fromJson(needs.cases.outputs.reject) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
@@ -300,20 +252,14 @@ jobs:
   reject-manual:
     name: reject-manual (${{ matrix.case }})
     if: github.event_name == 'workflow_dispatch'
+    needs: cases
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - case: plain-version
-            fixture: pkg-plain-version
-            expected: manual-version
-          - case: post-version
-            fixture: pkg-post-version
-            expected: manual-version
+      matrix: ${{ fromJson(needs.cases.outputs.reject-manual) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
@@ -384,17 +330,14 @@ jobs:
   reject-tag-mismatch:
     name: reject-tag-mismatch (${{ matrix.case }})
     if: github.ref_type == 'tag' && github.ref_name != 'v0.0.1a1'
+    needs: cases
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - case: tag-mismatch
-            fixture: pkg
-            expected: tag
+      matrix: ${{ fromJson(needs.cases.outputs.reject-tag-mismatch) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7

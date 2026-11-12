@@ -1,0 +1,147 @@
+{
+  "accept": [
+    {
+      "case": "dotted-name",
+      "fixture": "pkg-dotted-name",
+      "name": "pypi.release-action.fixture",
+      "version": "0.0.1a1",
+      "released": true
+    },
+    {
+      "case": "dynamic-version",
+      "fixture": "pkg-dynamic-version",
+      "name": "pypi-release-action-fixture",
+      "version": "0.0.1a1",
+      "released": true
+    },
+    {
+      "case": "stale-dist",
+      "fixture": "pkg",
+      "name": "pypi-release-action-fixture",
+      "version": "0.0.1a1",
+      "stale": true,
+      "released": true
+    },
+    {
+      "case": "import-name-detected",
+      "fixture": "pkg-import-name",
+      "name": "pypi-release-action-fixture-alt",
+      "version": "0.0.1a1",
+      "released": false
+    },
+    {
+      "case": "import-name-explicit",
+      "fixture": "pkg-import-name",
+      "name": "pypi-release-action-fixture-alt",
+      "version": "0.0.1a1",
+      "import-name": "fixture_alt",
+      "released": false
+    },
+    {
+      "case": "import-name-matches-distribution",
+      "fixture": "pkg-multi-module",
+      "name": "pypi-release-action-fixture-multi",
+      "version": "0.0.1a1",
+      "released": false
+    },
+    {
+      "case": "import-name-skips-private",
+      "fixture": "pkg-private-module",
+      "name": "pypi-release-action-fixture-private",
+      "version": "0.0.1a1",
+      "released": false
+    }
+  ],
+  "reject": [
+    {
+      "case": "build-failure",
+      "fixture": "pkg-build-failure",
+      "expected": "build",
+      "released": true
+    },
+    {
+      "case": "invalid-metadata",
+      "fixture": "pkg-invalid-metadata",
+      "expected": "twine",
+      "released": true
+    },
+    {
+      "case": "already-published",
+      "fixture": "pkg-published",
+      "expected": "published",
+      "released": true
+    },
+    {
+      "case": "import-failure",
+      "fixture": "pkg-import-failure",
+      "expected": "smoke-wheel",
+      "released": true
+    },
+    {
+      "case": "no-requires-python",
+      "fixture": "pkg-no-requires-python",
+      "expected": "metadata-fields",
+      "released": false
+    },
+    {
+      "case": "secret-file",
+      "fixture": "pkg-secret-file",
+      "expected": "unwanted-files",
+      "released": false
+    },
+    {
+      "case": "local-version",
+      "fixture": "pkg-local-version",
+      "expected": "local-version",
+      "released": false
+    },
+    {
+      "case": "bad-entry-point",
+      "fixture": "pkg-bad-entry-point",
+      "expected": "entry-points",
+      "released": false
+    },
+    {
+      "case": "wrong-import-name",
+      "fixture": "pkg-import-name",
+      "expected": "smoke-wheel",
+      "import-name": "not_the_module",
+      "released": false
+    },
+    {
+      "case": "ambiguous-import-name",
+      "fixture": "pkg-ambiguous-import",
+      "expected": "import",
+      "released": false
+    },
+    {
+      "case": "oversized-file",
+      "fixture": "pkg",
+      "expected": "size",
+      "stage": "oversized",
+      "released": false
+    }
+  ],
+  "reject-manual": [
+    {
+      "case": "plain-version",
+      "fixture": "pkg-plain-version",
+      "expected": "manual-version",
+      "released": true
+    },
+    {
+      "case": "post-version",
+      "fixture": "pkg-post-version",
+      "expected": "manual-version",
+      "released": false
+    }
+  ],
+  "reject-tag-mismatch": [
+    {
+      "case": "tag-mismatch",
+      "fixture": "pkg",
+      "expected": "tag",
+      "released": true
+    }
+  ]
+}

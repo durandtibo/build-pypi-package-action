@@ -102,13 +102,15 @@ Conventions:
 ## Tests
 
 - Tests are workflow-based: a new behaviour or guard in `action.yml` needs a fixture under
-  `test/fixtures/` (or an extra assertion) and a row in the case tables of both `ci-action.yaml` and
-  `nightly-test-released.yaml` where applicable. `ci-action.yaml` and `nightly-test-released.yaml` have
+  `test/fixtures/` (or an extra assertion) and a row in `test/cases.json`, the single file with the
+  case tables (`accept`, `reject`, `reject-manual`, `reject-tag-mismatch`). A row has `"released":
+false` until the last release has the feature; the nightly workflow runs only the rows with
+  `"released": true` (`scripts/load-cases.sh`). `ci-action.yaml` and `nightly-test-released.yaml` have
   the same structure: `build`/`build-python` (success path), `accept` (packages that must build),
   `reject` (packages that must fail, with the expected `failed-check` id), `reject-manual`
   (`workflow_dispatch` only), `reject-tag-mismatch` (tag ref only) and `verify-artifact`. They differ
-  only in the `uses:` ref, in the staging of the fixtures (`legacy-invoke/`), and in the rows of
-  features the release does not have yet. A new case is a new row, not a new job.
+  only in the `uses:` ref, in the staging of the fixtures (`legacy-invoke/`) and in the mode passed to
+  `load-cases.sh`. A new case is a new row in `test/cases.json`, not a new job.
 - Put assertions shared by both workflows in `scripts/test-helper.sh` so the two only differ in
   which action ref they exercise.
 - Failure-path fixtures must assert that the action fails for the expected reason, not just that
@@ -133,7 +135,7 @@ Conventions:
    notes.
 3. Move the floating major tag to the same commit (`git tag -f vX && git push -f origin vX`).
 4. Update the version and SHA in the `uses:` refs and in the header of
-   `nightly-test-released.yaml`, add the rows of the new features to its case tables, and update the
+   `nightly-test-released.yaml`, flip `released` to `true` in `test/cases.json` for the features of the new release, and update the
    README examples if the major version changed. Once the release no longer writes `SHA256SUMS` and builds
    with uv directly, also remove the `assert_released_*` helpers and `test/fixtures/legacy-invoke/`.
 
