@@ -6,11 +6,12 @@ Guidance for coding agents working in this repository.
 
 A GitHub composite action (`action.yml`) that builds a Python package (sdist + wheel) with
 `uv`, validates it (`twine check --strict`, version guards, PyPI duplicate check), smoke-tests
-the wheel, writes `SHA256SUMS`, and uploads `dist/` as an artifact. It exposes the outputs
-`package-name` and `package-version` (read from the built wheel) and the diagnostic `failed-check`. All logic is inline in `action.yml`; there is no separate
-script. `scripts/test-helper.sh` holds assertions shared by the test workflows, and
+the wheel, and uploads `dist/` (wheel and sdist only) as an artifact. It exposes the outputs
+`package-name` and `package-version` (read from the built wheel) and the diagnostic `failed-check`. All logic is inline in `action.yml`;
+there is no separate script. `scripts/test-helper.sh` holds assertions shared by the test workflows, and
 `test/fixtures/` holds throwaway packages that the test workflows build. Neither is part of the
-action itself. `test/fixtures/legacy-invoke/` is not a package: `nightly-test-released.yaml` copies
+action itself. The `assert_released_*` helpers keep the checksum assertions for the last release; remove them with
+the next release that no longer writes `SHA256SUMS`. `test/fixtures/legacy-invoke/` is not a package: `nightly-test-released.yaml` copies
 it next to the fixture because the released version still builds through invoke; remove it once the
 released version builds with uv directly.
 

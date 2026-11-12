@@ -82,10 +82,9 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
 **4.x Report and upload**
 
-- `4.1` generates a `SHA256SUMS` checksum file alongside the distributions (`sha256sum`, or
-  `shasum -a 256` where `sha256sum` is missing).
-- `4.2` writes the job summary; `4.3` uploads `dist/` (wheel, sdist, checksums) as a workflow
-  artifact, kept for 5 days. The upload fails if `dist/` is empty.
+- `4.1` writes the job summary; `4.2` uploads `dist/` (the wheel and the sdist, nothing else) as a
+  workflow artifact, kept for 5 days. The upload fails if `dist/` is empty. The publish job can upload
+  the downloaded directory as is.
 
 Every step is fail-closed: the first failing check stops the job, and nothing is uploaded after it. A
 failure is reported as an annotation and in the job summary, in the form _what failed, why, how to

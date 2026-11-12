@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_dist_built
+          assert_released_dist_built
 
   # Build the fixture package with every Python version of the config
   build-python:
@@ -107,7 +107,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_dist_built
+          assert_released_dist_built
 
   # build-package must fail closed when the build command itself errors
   # out, before it ever gets to the metadata/publish checks.
@@ -246,7 +246,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_dist_built
+          assert_released_dist_built
 
   # A dynamic version (resolved by the build backend) must be extracted and built.
   dynamic-version:
@@ -283,7 +283,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_dist_built
+          assert_released_dist_built
 
   # The smoke test must fail closed when a package builds but cannot be imported.
   reject-import-failure:
@@ -378,7 +378,7 @@ jobs:
         run: |
           source scripts/test-helper.sh
           assert_metadata "pypi-release-action-fixture" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "9.9.9"
-          assert_dist_built
+          assert_released_dist_built
 
   # Verification just inspects already-built, OS-independent files
   # (wheel/sdist/checksums), so one runner is enough regardless of which
@@ -408,4 +408,4 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_dist_artifact
+          assert_released_dist_artifact
