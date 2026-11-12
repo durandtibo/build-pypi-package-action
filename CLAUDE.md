@@ -68,6 +68,8 @@ Files are prefixed by role, mirroring `durandtibo/cancel-queued-runs-action`:
 - `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and is
   not called from `ci.yaml`, so it can be a required check.
 - `security-dependency-review.yaml`: dependency review on pull requests.
+- `security-scorecard.yaml`: OSSF Scorecard supply-chain analysis (weekly, on pushes to `main`, and
+  manual runs); results go to the code-scanning dashboard.
 - `bot-*.yaml`: scheduled automation that opens PRs or acts on runs (pin actions, sync `.make/`,
   format files, cancel stale queued runs).
 
