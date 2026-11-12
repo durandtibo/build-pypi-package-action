@@ -90,18 +90,31 @@ runs:
           exit 1
         fi
 
+    # Only a 404 proves that the version is not published: a 200 means it
+    # exists, and anything else (network error -> 000, 429, 5xx) means the
+    # check could not conclude, so it fails closed instead of guessing.
     - name: Check version not already published on PyPI
       shell: bash
       env:
         PACKAGE_NAME: ${{ steps.metadata.outputs.name }}
         PACKAGE_VERSION: ${{ steps.metadata.outputs.version }}
       run: |
-        status=$(curl -s -o /dev/null -w "%{http_code}" \
-          "https://pypi.org/pypi/${PACKAGE_NAME}/${PACKAGE_VERSION}/json")
-        if [[ "$status" == "200" ]]; then
-          echo "::error::${PACKAGE_NAME} ${PACKAGE_VERSION} is already published on PyPI"
-          exit 1
-        fi
+        # PEP 503 normalization, so "My_Package" and "my-package" are the same project.
+        name=$(echo "${PACKAGE_NAME}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[-_.]+/-/g')
+        status=$(curl --silent --show-error --max-time 20 --retry 3 \
+          --output /dev/null --write-out '%{http_code}' \
+          "https://pypi.org/pypi/${name}/${PACKAGE_VERSION}/json" || true)
+        case "${status}" in
+          404) ;;
+          200)
+            echo "::error title=Version already on PyPI::${name} ${PACKAGE_VERSION} exists on PyPI, which never allows re-uploading a version. How to fix: bump the version (and create a new tag for a tag push)."
+            exit 1
+            ;;
+          *)
+            echo "::error title=Cannot verify against PyPI::PyPI answered HTTP ${status} for ${name} ${PACKAGE_VERSION}; failing closed instead of guessing. How to fix: re-run the job, and check https://status.python.org if it persists."
+            exit 1
+            ;;
+        esac
 
     # Install each artifact into a throwaway environment without the project
     # and import it in isolated mode (-I), so the source tree cannot mask a

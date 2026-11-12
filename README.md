@@ -38,9 +38,11 @@ If any of these are true, the action fails the job and nothing gets published.
 6. **Guard — tag pushes:** on any tag push (`refs/tags/*`), strips the leading `v` from the tag name and
    fails unless the result equals the package version (`v1.2.3` ↔ `1.2.3`). A tag that does not follow
    the `vX.Y.Z` convention therefore fails too.
-7. **Guard — duplicate releases:** fails if that package name/version is already published on PyPI. The
-   check queries `https://pypi.org/pypi/<name>/<version>/json` and only fails on an HTTP 200, so it needs
-   network access to PyPI and does not detect versions on other indexes (e.g. TestPyPI).
+7. **Guard — duplicate releases:** queries `https://pypi.org/pypi/<name>/<version>/json` (name
+   normalized per PEP 503, 20 s timeout, 3 retries) and passes only on an HTTP 404. A 200 fails
+   because the version is already published; any other answer (network error, 429, 5xx) fails too,
+   because the check could not prove the version is free. It needs network access to PyPI and does
+   not detect versions on other indexes (e.g. TestPyPI).
 8. Smoke-tests the wheel and the sdist by installing each into a throwaway environment and importing the
    package in isolated mode.
 9. Generates a `SHA256SUMS` checksum file alongside the distributions (`sha256sum`, or `shasum -a 256`
