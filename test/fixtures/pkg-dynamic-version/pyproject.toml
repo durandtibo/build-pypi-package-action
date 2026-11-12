@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pypi-release-action-fixture"
+dynamic = ["version"]
+description = "Throwaway fixture with a dynamic (hatch) version, used to test metadata extraction."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pypi_release_action_fixture"]
+
+[tool.hatch.version]
+path = "pypi_release_action_fixture/__init__.py"

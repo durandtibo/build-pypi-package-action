@@ -1,9 +1,11 @@
 # Workflow testing the action from the current repository code (uses: ./),
 # i.e. the version that is not released yet, on Linux, macOS, and Windows.
-# It builds the throwaway packages of test/fixtures/: the success path, a
-# custom build-command, and the failure paths (failing build command,
-# already-published version, plain version on a manual run). Safe to run on
-# every push/PR: no publishing or signing involved.
+# It builds the throwaway packages of test/fixtures/: the success path (every
+# OS, every Python version), edge cases (dotted package name, dynamic version,
+# stale dist/, plain version outside manual runs) and the failure paths (failing
+# build, invalid metadata, unimportable package, already-published version,
+# plain version on a manual run). Failure jobs also check the stage at which the
+# action failed. Safe to run on every push/PR: no publishing or signing involved.
 
 name: Test Action
 on:
@@ -34,7 +36,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
       # The build-package action assumes the package it builds lives at the
-      # repo root (pyproject.toml, Makefile, tasks.py), so stage the fixture
+      # repo root (pyproject.toml), so stage the fixture
       # there for the duration of this job.
       - name: Stage fixture package at repo root
         shell: bash
@@ -102,43 +104,6 @@ jobs:
           source scripts/test-helper.sh
           assert_dist_built
 
-  # build-package must invoke the command given via the build-command
-  # input instead of assuming "inv build-package".
-  custom-build-command:
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
-
-      - name: Stage fixture package at repo root
-        shell: bash
-        run: cp -r test/fixtures/pkg-custom-build-command/. .
-
-      - name: Run build-package action
-        id: build
-        uses: ./
-        with:
-          artifact-name: dist-local-custom-build-command
-          build-command: inv custom-build
-
-      - name: Assert extracted metadata matches the fixture
-        shell: bash
-        env:
-          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
-          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
-        run: |
-          source scripts/test-helper.sh
-          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
-
-      - name: Assert dist/ was built
-        shell: bash
-        run: |
-          source scripts/test-helper.sh
-          assert_dist_built
-
   # build-package must fail closed when the build command itself errors
   # out, before it ever gets to the metadata/publish checks.
   reject-build-failure:
@@ -166,7 +131,9 @@ jobs:
           OUTCOME: ${{ steps.build.outcome }}
         run: |
           source scripts/test-helper.sh
-          assert_failure "build-package (build command errors out)" "${OUTCOME}"
+          assert_failure "build-package (build errors out)" "${OUTCOME}"
+          # The build step must be the one that failed: nothing was built or checksummed
+          test ! -e dist/SHA256SUMS
 
   # build-package must fail closed when the package name/version it built
   # is already published on PyPI, regardless of how it was triggered.
@@ -199,6 +166,7 @@ jobs:
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (already-published version)" "${OUTCOME}"
+          assert_failed_after_build
 
   # build-package must reject workflow_dispatch runs that target a plain
   # release version instead of a dev/pre-release one. This check is only
@@ -230,6 +198,202 @@ jobs:
         run: |
           source scripts/test-helper.sh
           assert_failure "build-package (manual run, plain release version)" "${OUTCOME}"
+          assert_failed_after_build
+
+  # A distribution name with dots/hyphens must be normalized to its module name
+  # (pypi_release_action_fixture) by the smoke test.
+  dotted-package-name:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-dotted-name/. .
+
+      - name: Run build-package action
+        id: build
+        uses: ./
+        with:
+          artifact-name: dist-local-dotted-package-name
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi.release-action.fixture" "0.0.1a1"
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_built
+
+  # A dynamic version (resolved by the build backend) must be extracted and built.
+  dynamic-version:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-dynamic-version/. .
+
+      - name: Run build-package action
+        id: build
+        uses: ./
+        with:
+          artifact-name: dist-local-dynamic-version
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
+
+      - name: Assert dist/ was built
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_built
+
+  # dist/ content from a previous build must never leak into the artifact.
+  stale-dist-is-cleared:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg/. .
+
+      - name: Create stale files in dist/
+        shell: bash
+        run: |
+          mkdir dist
+          touch dist/stale-0.0.0-py3-none-any.whl dist/stale-0.0.0.tar.gz dist/SHA256SUMS
+
+      - name: Run build-package action
+        id: build
+        uses: ./
+        with:
+          artifact-name: dist-local-stale-dist-is-cleared
+
+      - name: Assert stale files are gone and dist/ was rebuilt
+        shell: bash
+        run: |
+          source scripts/test-helper.sh
+          assert_dist_built
+          test ! -e dist/stale-0.0.0-py3-none-any.whl
+          test ! -e dist/stale-0.0.0.tar.gz
+          assert_dist_artifact
+
+  # The smoke test must fail closed when a package builds but cannot be imported.
+  reject-import-failure:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-import-failure/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed at the expected stage
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (wheel cannot be imported)" "${OUTCOME}"
+          assert_failed_after_build
+
+  # `twine check --strict` must reject distributions with invalid metadata.
+  reject-invalid-metadata:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-invalid-metadata/. .
+
+      # The error annotation of this step is expected: the step must fail
+      - name: Run build-package action
+        id: build
+        continue-on-error: true
+        uses: ./
+
+      - name: Assert build-package action failed at the expected stage
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failure "build-package (metadata rejected by twine)" "${OUTCOME}"
+          assert_failed_after_build
+
+  # The pre-release requirement only applies to manual runs: a plain release
+  # version that is not on PyPI must be accepted on any other trigger.
+  accept-plain-version-outside-manual-run:
+    if: github.event_name != 'workflow_dispatch'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg-plain-version/. .
+
+      - name: Run build-package action
+        id: build
+        uses: ./
+        with:
+          artifact-name: dist-local-accept-plain-version
+
+      - name: Assert plain release version was accepted
+        shell: bash
+        env:
+          PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "pypi-release-action-fixture" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "9.9.9"
+          assert_dist_built
 
   # Verification just inspects already-built, OS-independent files
   # (wheel/sdist/checksums), so one runner is enough regardless of which

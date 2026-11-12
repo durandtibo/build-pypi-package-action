@@ -5,7 +5,7 @@ Guidance for coding agents working in this repository.
 ## Repository purpose
 
 A GitHub composite action (`action.yml`) that builds a Python package (sdist + wheel) with
-`uv`/`invoke`, validates it (`twine check --strict`, version guards, PyPI duplicate check), smoke-tests
+`uv`, validates it (`twine check --strict`, version guards, PyPI duplicate check), smoke-tests
 the wheel, writes `SHA256SUMS`, and uploads `dist/` as an artifact. It exposes the outputs
 `package-name` and `package-version`. All logic is inline in `action.yml`; there is no separate
 script. `scripts/test-helper.sh` holds assertions shared by the test workflows, and
@@ -60,7 +60,7 @@ Files are prefixed by role, mirroring `durandtibo/cancel-queued-runs-action`:
   - `ci-action.yaml`: runs the action from this checkout (`uses: ./`), i.e. the version not
     released yet, against the fixtures in `test/fixtures/` on every OS, and on every Python version
     on Linux. It covers the success path and the failure paths (already-published version, plain
-    version on a manual run, failing build command, custom `build-command`).
+    version on a manual run, failing build).
 - `nightly.yaml`: nightly entry point for the last stable release. It calls
   `nightly-test-released.yaml`, the same tests as `ci-action.yaml` against the last stable
   release. Update the version in its header comment and in its `uses:` refs when a new release is

@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pypi-release-action-fixture"
+name = "pypi.release-action.fixture"
 version = "0.0.1a1"
-description = "Throwaway fixture package with a non-default build task name, used to test that build-package honors the build-command input."
+description = "Throwaway fixture whose distribution name has dots and hyphens, used to test the module-name normalization of the smoke test."
 readme = "README.md"
 requires-python = ">=3.10"
 
