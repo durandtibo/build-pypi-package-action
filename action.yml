@@ -15,7 +15,7 @@ inputs:
     required: false
     default: "dist"
   import-name:
-    description: Module imported by the smoke test (default is detected from the wheel)
+    description: Module imported by the smoke test (default is resolved from the wheel; the action fails if that is ambiguous)
     required: false
     default: ""
 
@@ -99,9 +99,8 @@ runs:
     #   missing         required metadata fields the wheel lacks
     #   unwanted        files that must never ship (secrets, VCS data, caches);
     #                   example files such as .env.example are allowed
-    #   module          import name: top_level.txt if present, else the first
-    #                   top-level package (directory with __init__.py), else the
-    #                   first top-level .py file, else "-"
+    #   candidates      top-level packages (directories with __init__.py) and
+    #                   modules (.py files) of the wheel, for the import name
     # Names are sanitized (no newline) so a file name cannot forge an output line.
     - name: 1.3 Inspect distributions
       id: inspect
@@ -115,17 +114,15 @@ runs:
         with zipfile.ZipFile(sys.argv[1]) as z:
             names = sorted(z.namelist())
             meta = Parser().parsestr(z.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode())
-            top = next((n for n in names if n.endswith(".dist-info/top_level.txt")), None)
-            pkgs = [n.split("/")[0] for n in names if n.count("/") == 1 and n.endswith("/__init__.py")]
-            mods = [n[:-3] for n in names if "/" not in n and n.endswith(".py")]
-            found = (z.read(top).decode().split() if top else []) + pkgs + mods
+            tops = {n.split("/")[0] for n in names if n.count("/") == 1 and n.endswith("/__init__.py")}
+            tops |= {n[:-3] for n in names if "/" not in n and n.endswith(".py")}
         with tarfile.open(sys.argv[2]) as t:
             sdist = t.getnames()
         clean = lambda n: n.replace("\n", "?")
         print(f"name={meta['Name']}\nversion={meta['Version']}\ncanonical-name={canon(meta['Name'])}")
         print("missing=" + ",".join(k for k in ("Summary", "Requires-Python") if not meta[k]))
         print("unwanted=" + ",".join(sorted({clean(n) for n in names + sdist if BAD.search(n)})))
-        print(f"module={found[0] if found else '-'}")
+        print("candidates=" + ",".join(sorted(clean(n) for n in tops)))
         PY
 
     # Metadata PyPI and installers rely on: without Requires-Python pip installs the
@@ -142,7 +139,35 @@ runs:
           fail metadata-fields "Required metadata missing" "The wheel has no: ${MISSING//,/, }." \
             "Set description and requires-python in [project] of pyproject.toml."
 
-    - name: 1.5 Check no unwanted files are packaged
+    # Fail closed: the module to smoke test is never guessed. Order: the import-name
+    # input; else the wheel's top-level names (private "_x" names dropped when a
+    # public one remains); of those, the one named like the distribution; else the
+    # only one; else fail and list them.
+    - name: 1.5 Resolve import name
+      id: import
+      shell: bash
+      env:
+        IMPORT_NAME: ${{ inputs.import-name }}
+        CANDIDATES: ${{ steps.inspect.outputs.candidates }}
+        CANONICAL_NAME: ${{ steps.inspect.outputs.canonical-name }}
+      run: |
+        source "${RUNNER_TEMP}/fail.sh"
+        IFS=, read -ra c <<< "${CANDIDATES}"
+        pick="${IMPORT_NAME}"
+        if [[ -z "${pick}" ]]; then
+          public=()
+          for m in "${c[@]}"; do [[ "${m}" == _* ]] || public+=("${m}"); done
+          if (( ${#public[@]} )); then c=("${public[@]}"); fi
+          for m in "${c[@]}"; do [[ "${m}" == "${CANONICAL_NAME//-/_}" ]] && pick="${m}"; done
+          if [[ -z "${pick}" && ${#c[@]} -eq 1 ]]; then pick="${c[0]}"; fi
+        fi
+        [[ -n "${pick}" ]] ||
+          fail import "Import name is ambiguous" \
+            "Top-level modules in the wheel: ${CANDIDATES//,/, }; none is the only one or matches ${CANONICAL_NAME}." \
+            "Set the import-name input."
+        echo "module=${pick}" >> "$GITHUB_OUTPUT"
+
+    - name: 1.6 Check no unwanted files are packaged
       id: unwanted-files
       shell: bash
       env:
@@ -154,7 +179,7 @@ runs:
             "Exclude them in the build backend config (e.g. hatch exclude, MANIFEST.in) and rotate any leaked secret."
 
     # PyPI rejects files over 100 MiB by default; fail here instead of at upload time.
-    - name: 1.6 Check file sizes
+    - name: 1.7 Check file sizes
       id: size
       shell: bash
       run: |
@@ -168,7 +193,7 @@ runs:
 
     # A platform-specific wheel built on one runner does not cover the other
     # platforms. Warn only: compiled packages are legitimate.
-    - name: 1.7 Warn on platform-specific wheel
+    - name: 1.8 Warn on platform-specific wheel
       shell: bash
       run: |
         wheel=$(basename dist/*.whl)
@@ -181,7 +206,7 @@ runs:
     # resolve to, so twine check is reproducible. The flag is scoped to twine: it
     # must not restrict the package's own build requirements. Bump the version and
     # the date with the quarterly review (see CLAUDE.md).
-    - name: 1.8 Check package metadata
+    - name: 1.9 Check package metadata
       id: twine
       shell: bash
       run: |
@@ -263,24 +288,10 @@ runs:
         esac
 
     # ---- 3.x Smoke tests ----------------------------------------------------
-    # The explicit import-name input wins over the module detected from the wheel.
-    - name: 3.1 Resolve import name
-      id: import
-      shell: bash
-      env:
-        MODULE: ${{ inputs.import-name || steps.inspect.outputs.module }}
-      run: |
-        source "${RUNNER_TEMP}/fail.sh"
-        [[ "${MODULE}" != "-" ]] ||
-          fail import "Import name not detected" \
-            "The wheel has no top_level.txt, no package directory and no top-level module, so the module to import is unknown." \
-            "Set the import-name input."
-        echo "module=${MODULE}" >> "$GITHUB_OUTPUT"
-
     # Install each artifact into a throwaway environment without the project
     # and import it in isolated mode (-I), so the source tree cannot mask a
     # broken artifact (e.g. a flat-layout package missing from the wheel).
-    - name: 3.2 Smoke test wheel
+    - name: 3.1 Smoke test wheel
       id: smoke-wheel
       shell: bash
       env:
@@ -295,7 +306,7 @@ runs:
     # Every declared entry point (console scripts, plugins) must resolve to an
     # importable object: a typo there installs fine and fails only when the user
     # runs the command.
-    - name: 3.3 Smoke test entry points
+    - name: 3.2 Smoke test entry points
       id: entry-points
       shell: bash
       env:

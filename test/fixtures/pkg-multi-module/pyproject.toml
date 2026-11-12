@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pypi-release-action-fixture-multi"
+version = "0.0.1a1"
+description = "Throwaway fixture whose wheel also ships a docs package that sorts before the real module and cannot be imported, used to test that the import name is matched to the distribution name."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["docs", "pypi_release_action_fixture_multi"]
