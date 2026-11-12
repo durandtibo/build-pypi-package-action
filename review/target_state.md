@@ -9,18 +9,19 @@ can only be exercised on GitHub Actions.
 These are the properties the target state must satisfy. Each one is checked against the proposal in
 section 5.
 
-| #   | Property              | Definition                                                                                                                                                                                                              |
-| --- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1  | **Single purpose**    | Build one Python package (sdist + wheel) from the repo root with `uv`, prove it is safe to publish, and hand `dist/` to a later publish job as an artifact. It never publishes, signs, or tests the package's own code. |
-| P2  | **Fail closed**       | Any check that cannot positively conclude "safe" fails the job with a clear `::error::` message. This includes a network error or a 5xx while querying PyPI, not only a definite "already published".                   |
-| P3  | **Ground truth**      | Name and version come from the built artifact, not from a second parser of `pyproject.toml`, so static and dynamic versions behave identically and the guards check what will actually be uploaded.                     |
-| P4  | **Minimal trust**     | No third-party action beyond `setup-uv` and `upload-artifact`. Every tool version is pinned. No caches are written (a release build must not consume or poison a cache). Needs only `contents: read`.                   |
-| P5  | **Fast**              | Cheap checks run before slow ones. Few steps (each step costs a shell start). Nothing is installed or computed that is not used.                                                                                        |
-| P6  | **Simple**            | All logic stays inline in `action.yml`; about five steps; two inputs plus one optional; two outputs plus one diagnostic. No separate script.                                                                            |
-| P7  | **Portable**          | Identical behaviour on Linux, macOS, and Windows (Git Bash) runners. No dependency on `sha256sum`, `shasum`, or other platform-specific tools.                                                                          |
-| P8  | **Safe to chain**     | `dist/` contains exactly the files that PyPI accepts (one wheel, one sdist) so the publish job can upload the directory as is.                                                                                          |
-| P9  | **Secure by default** | Inputs and outputs go through `env:`, never `${{ }}` in `run:`. Third-party actions are pinned to SHAs with `# ratchet:` comments. The build job needs no `id-token`.                                                   |
-| P10 | **Tested, cheaply**   | Every guard has a fixture that proves it fails for the expected reason. The two copies of the test suite are collapsed into one; CI cost and maintenance are proportional to the action's size.                         |
+| #   | Property              | Definition                                                                                                                                                                                                                                  |
+| --- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | **Single purpose**    | Build one Python package (sdist + wheel) from the repo root with `uv`, prove it is safe to publish, and hand `dist/` to a later publish job as an artifact. It never publishes, signs, or tests the package's own code.                     |
+| P2  | **Fail closed**       | Any check that cannot positively conclude "safe" fails the job with a clear `::error::` message. This includes a network error or a 5xx while querying PyPI, not only a definite "already published".                                       |
+| P3  | **Ground truth**      | Name and version come from the built artifact, not from a second parser of `pyproject.toml`, so static and dynamic versions behave identically and the guards check what will actually be uploaded.                                         |
+| P4  | **Minimal trust**     | No third-party action beyond `setup-uv` and `upload-artifact`. Every tool version is pinned. No caches are written (a release build must not consume or poison a cache). Needs only `contents: read`.                                       |
+| P5  | **Fast**              | Cheap checks run before slow ones. Few steps (each step costs a shell start). Nothing is installed or computed that is not used.                                                                                                            |
+| P6  | **Simple**            | All logic stays inline in `action.yml`; about five steps; two inputs plus one optional; two outputs plus one diagnostic. No separate script.                                                                                                |
+| P7  | **Portable**          | Identical behaviour on Linux, macOS, and Windows (Git Bash) runners. No dependency on `sha256sum`, `shasum`, or other platform-specific tools.                                                                                              |
+| P8  | **Safe to chain**     | `dist/` contains exactly the files that PyPI accepts (one wheel, one sdist) so the publish job can upload the directory as is.                                                                                                              |
+| P9  | **Secure by default** | Inputs and outputs go through `env:`, never `${{ }}` in `run:`. Third-party actions are pinned to SHAs with `# ratchet:` comments. The build job needs no `id-token`.                                                                       |
+| P10 | **Tested, cheaply**   | Every guard has a fixture that proves it fails for the expected reason. The two test suites (current code, last release) share one case table and one set of assertions; CI cost and maintenance are proportional to the action's size.     |
+| P11 | **Fail loudly**       | A failure says what failed, why it matters, the values involved, and how to fix it, in an annotation and in the job summary, at the top level of the log. The user never has to read a stack trace or the action's source to understand it. |
 
 ## 2. Current state: what is good
 
@@ -155,7 +156,21 @@ About a dozen near-identical jobs: checkout, stage, run, assert. Failure cases a
 different fixture, `event_name`, and expected reason. A matrix expresses that in a table and
 makes adding a case a one-line change.
 
-### F13. Smaller points
+### F13. Failures are quiet and give no remedy (violates P11)
+
+Today's messages state the symptom only: `Tag v1.2 does not match package version 1.2.0`,
+`... is already published on PyPI`, `Expected exactly one wheel and one sdist`. They do not say what
+to do next. The other failures are not explained at all: a failing smoke test ends in a raw `uv`
+error, a failing build or `twine check` in the tool's own output with no pointer to the check that
+failed, and nothing is written to the job summary, so the reader must open the log, find the red
+step, and infer the cause. Fixing the cause often needs context the message omits: the event, the
+ref, the detected version, and the rule that was applied.
+**Fix:** every failure goes through one `fail()` helper that emits an annotation with a title and a
+message of the form _what failed - why - how to fix_, including the actual values, and appends the
+same text to `$GITHUB_STEP_SUMMARY`. Build and smoke-test failures are wrapped so that the tool's
+output is followed by the same kind of message. The messages are specified in 5.2.1.
+
+### F14. Smaller points
 
 - `upload-artifact` default is `if-no-files-found: warn`: set `error`.
 - `retention-days: 5` is hard-coded. Fine as a default; no input needed (P6). Mention in README.
@@ -226,9 +241,11 @@ runs:
         REF: ${{ github.ref }}
         REF_NAME: ${{ github.ref_name }}
       run: |
+        # fail <check-id> <title> <what happened and why> <how to fix>
         fail() {
           echo "failed-check=$1" >> "$GITHUB_OUTPUT"
-          echo "::error::$2"
+          echo "::error title=$2::$3 $4"
+          printf '### :x: %s\n\n%s\n\n**How to fix:** %s\n' "$2" "$3" "$4" >> "$GITHUB_STEP_SUMMARY"
           exit 1
         }
 
@@ -237,12 +254,15 @@ runs:
         wheels=(dist/*.whl)
         sdists=(dist/*.tar.gz)
         [[ ${#wheels[@]} -eq 1 && ${#sdists[@]} -eq 1 ]] ||
-          fail dist-contents "Expected one wheel and one sdist in dist/, found ${#wheels[@]} and ${#sdists[@]}"
+          fail dist-contents "Unexpected files in dist/" \
+            "Found ${#wheels[@]} wheel(s) and ${#sdists[@]} sdist(s); exactly one of each is required." \
+            "Check [build-system] and that no other step writes to dist/."
         [[ $(find dist -mindepth 1 | wc -l) -eq 2 ]] ||
-          fail dist-contents "Unexpected files in dist/"
+          fail dist-contents "Unexpected files in dist/" "dist/ holds extra files: $(ls dist)." "Remove them; only one wheel and one sdist may be present."
 
         # 2. metadata renders on PyPI
-        uvx twine@<pinned> check --strict dist/* || fail twine "twine check failed"
+        uvx twine@<pinned> check --strict dist/* ||
+          fail twine "Invalid package metadata" "twine check --strict rejected the metadata (output above); PyPI would reject or misrender it." "Fix the readme/description named above; run uvx twine check --strict dist/* locally."
 
         # 3. name, version and import name come from the built wheel (not from pyproject.toml)
         read -r name version import_name < <(
@@ -261,10 +281,10 @@ runs:
 
         # 4. guards
         if [[ "${EVENT_NAME}" == workflow_dispatch && ! "${version}" =~ (a|b|rc)[0-9]+|\.dev[0-9]+ ]]; then
-          fail manual-version "Manual runs need a dev/pre-release version, got ${version}"
+          fail manual-version "Version not allowed on manual run" "Event is workflow_dispatch and ${version} is a final release." "Use a pre-release (${version}a1, ${version}.dev1) or publish by pushing tag v${version}."
         fi
         if [[ "${REF}" == refs/tags/* && "${REF_NAME}" != "v${version}" ]]; then
-          fail tag "Tag ${REF_NAME} must be exactly v${version}"
+          fail tag "Tag does not match version" "Tag is ${REF_NAME}, package version is ${version}; the tag must be exactly v${version}." "Fix the version in pyproject.toml, or delete the tag and create v${version}."
         fi
 
         # 5. PyPI duplicate check. Only 404 proves "not published": anything else fails closed.
@@ -273,8 +293,8 @@ runs:
           --write-out '%{http_code}' "https://pypi.org/pypi/${canonical}/${version}/json" || true)
         case "${status}" in
           404) ;;
-          200) fail published "${name} ${version} is already published on PyPI" ;;
-          *)   fail published "Could not verify ${name} ${version} on PyPI (HTTP ${status}); failing closed" ;;
+          200) fail published "Version already on PyPI" "${name} ${version} exists on PyPI, which never allows re-uploading a version." "Bump the version (and create a new tag for a tag push)." ;;
+          *)   fail published "Cannot verify against PyPI" "PyPI answered HTTP ${status}; failing closed instead of guessing." "Re-run the job; check https://status.python.org if it persists." ;;
         esac
 
     # Install each artifact in a throwaway environment, without the project, and import
@@ -284,7 +304,7 @@ runs:
       env:
         IMPORT_NAME: ${{ inputs.import-name || steps.validate.outputs.import-name }}
       run: |
-        [[ "${IMPORT_NAME}" != "-" ]] || { echo "::error::Cannot detect the module to import; set the import-name input"; exit 1; }
+        [[ "${IMPORT_NAME}" != "-" ]] || { echo "::error title=Import name not detected::..."; exit 1; }
         for artifact in dist/*; do
           uv run --isolated --no-project --with "${artifact}" -- python -I -c "import importlib, os; importlib.import_module(os.environ['IMPORT_NAME'])"
         done
@@ -316,6 +336,33 @@ Notes on the sketch:
 - Smoke test failures leave `failed-check` empty; the test helper treats "`dist/` exists, no
   `failed-check`" as "smoke test failed".
 
+#### 5.2.1 Failure messages (P11)
+
+Each message has a title (annotation heading), what happened with the real values, and the fix. The
+wording below is the contract; the exact text can be tuned in the PR.
+
+| `failed-check`   | Title                             | What happened                                                                                   | How to fix                                                                                                             |
+| ---------------- | --------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| _(build step)_   | Build failed                      | `uv build` failed (its output is above). Nothing was uploaded.                                  | Run `uv build` locally; the error above is from the build backend, not from this action.                               |
+| `dist-contents`  | Unexpected files in dist/         | Found N wheel(s), M sdist(s), list of files. Exactly one of each is required.                   | Check `[build-system]` and that no other step writes to `dist/`.                                                       |
+| `twine`          | Invalid package metadata          | `twine check --strict` rejected the metadata (output above). PyPI would reject or misrender it. | Fix the `readme`, `description`, or classifiers named above; run `uvx twine check --strict dist/*` locally.            |
+| `manual-version` | Version not allowed on manual run | Event is `workflow_dispatch` and the version is `1.2.3`, which is a final release.              | Set a pre-release version (`1.2.3a1`, `1.2.3.dev1`), or publish by pushing the tag `v1.2.3`.                           |
+| `tag`            | Tag does not match version        | Tag is `v1.2`, package version is `1.2.0`. The tag must be exactly `v` + the version.           | Change the version in `pyproject.toml`, or delete the tag and create `v1.2.0`.                                         |
+| `published`      | Version already on PyPI           | `name 1.2.3` exists on PyPI. PyPI never allows re-uploading a version.                          | Bump the version and, for a tag push, create a new tag.                                                                |
+| `published`      | Cannot verify against PyPI        | PyPI answered HTTP 503 (or no answer). The action fails closed instead of guessing.             | Re-run the job; check https://status.python.org if it persists.                                                        |
+| _(smoke test)_   | Distribution cannot be imported   | Installing `<file>` into a clean environment and importing `<module>` failed (output above).    | Check that the wheel and sdist contain the package (`unzip -l`), or set `import-name` if `<module>` is the wrong name. |
+| _(smoke test)_   | Import name not detected          | The wheel has no `top_level.txt` and the action cannot tell which module to import.             | Set the `import-name` input.                                                                                           |
+
+Rules for all messages:
+
+- Always include the values involved (version, tag, event, file, HTTP status), never only a verdict.
+- A message must be understandable without reading `action.yml`.
+- The build and smoke-test steps run their tool first, so the real error is directly above the
+  action's message; the action's message is the last thing in the log and in the summary.
+- On success, the job summary lists name, version, files, and the checks that passed, so a green run
+  is also readable (`### :white_check_mark: name version`).
+- Tests assert the `failed-check` id, not the text, so wording can improve without touching tests.
+
 ### 5.3 Why this satisfies the properties
 
 | Property | How                                                                                                        |
@@ -330,6 +377,7 @@ Notes on the sketch:
 | P8       | `dist/` holds two files and the check enforces it.                                                         |
 | P9       | Unchanged rules, enforced for new inputs and the new step.                                                 |
 | P10      | See 5.4.                                                                                                   |
+| P11      | One `fail()` helper; what / why / fix with real values in annotation and job summary (5.2.1).              |
 
 ### 5.4 Tests
 
@@ -416,7 +464,7 @@ jobs:
 ## 6. Migration order (one PR per logical change)
 
 1. `fix/pypi-check-fail-closed`: F1 only. Small, urgent, safe to ship alone.
-2. `refactor/read-metadata-from-wheel`: F2, F5, F6, F7, F8, F9, F13 (single validate step, remove
+2. `refactor/read-metadata-from-wheel`: F2, F5, F6, F7, F8, F9, F13, F14 (single validate step, remove
    the third-party action, pin `twine`, `enable-cache: false`, `--no-sources`). Adds
    `failed-check` and updates the helper and tests together.
 3. `feat/import-name`: F3, new input, fixture, README.
