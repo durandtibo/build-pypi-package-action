@@ -34,7 +34,37 @@ assert_failure() {
 }
 
 # assert_dist_artifact
+# The downloaded artifact must hold exactly one wheel, one sdist and checksums
+# that cover exactly those two files and verify.
 assert_dist_artifact() {
 	ls dist/*.whl dist/*.tar.gz dist/SHA256SUMS
+	test "$(find dist -mindepth 1 | wc -l)" -eq 3 || {
+		echo "::error::unexpected files in dist/: $(find dist -mindepth 1)"
+		exit 1
+	}
+	test "$(wc -l <dist/SHA256SUMS)" -eq 2 || {
+		echo "::error::SHA256SUMS should list exactly 2 files"
+		exit 1
+	}
 	(cd dist && sha256sum --check SHA256SUMS)
+}
+
+# assert_failed_during_build
+# The action must have failed before producing any distribution.
+assert_failed_during_build() {
+	if compgen -G "dist/*.whl" >/dev/null || compgen -G "dist/*.tar.gz" >/dev/null; then
+		echo "::error::dist/ holds distributions, but the build was expected to fail"
+		exit 1
+	fi
+}
+
+# assert_failed_after_build
+# The distributions were built, but the action failed in a later check
+# (metadata, guards, smoke test) before checksums and upload.
+assert_failed_after_build() {
+	ls dist/*.whl dist/*.tar.gz
+	test ! -e dist/SHA256SUMS || {
+		echo "::error::dist/SHA256SUMS exists, so the action got past its checks"
+		exit 1
+	}
 }
