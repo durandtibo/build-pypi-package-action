@@ -50,8 +50,9 @@ released version builds with uv directly.
 - Add a comment above a step when its purpose is not obvious.
 - Steps are small (one purpose, one failure id, about 15 lines), named `N.x` by topic (`0.x` setup,
   `1.x` build and package checks, `2.x` release guards, `3.x` smoke tests, `4.x` report and upload).
-  A step that can fail has an `id:` equal to its `failed-check` id, calls `fail <id> <title> <what>
-<how to fix>` (defined in step 0.2) and is listed in the `failed-check` output expression.
+  A step that can fail calls `fail <id> <title> <what> <how to fix>` (defined in step 0.2); step 4.3
+  publishes the id as the `failed-check` output (`unexpected` if no check failed), so there is no
+  second place to edit. Give a step an `id:` only when a later step reads its outputs.
   Failure messages say what failed, why, and how to fix, with the values involved.
 - Only an HTTP 404 from PyPI means "not published"; a 200 is a duplicate and anything else fails
   closed.
@@ -116,6 +117,9 @@ Conventions:
 - `nightly-test-released.yaml` may only assert behaviour that exists in the last release. A case
   that needs a new feature (`failed-check`, ...) reaches it after the release that contains the
   feature; until then it keeps asserting the outcome only.
+- `unexpected` has no row: its only trigger is an invalid input. Check it by hand after changing step
+  4.3: run the action with `python-version: "9.9"` and `continue-on-error: true` and read
+  `failed-check`.
 - Every bug fix needs a regression test that fails without the fix.
 - If a check fails for a real reason, report it rather than weakening the test.
 

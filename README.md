@@ -36,7 +36,8 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 - `0.1` installs a pinned `uv` and the requested Python version
   ([`astral-sh/setup-uv`](https://github.com/astral-sh/setup-uv), without cache: a release build never
   consumes or writes one).
-- `0.2` defines the `fail` helper used by every later step.
+- `0.2` defines the `fail` helper used by every later step. It records the id of the failed check
+  and escapes the annotation text.
 
 **1.x Build and package checks**
 
@@ -88,6 +89,7 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
 **4.x Report and upload**
 
+- `4.3` runs only after a failure and publishes the `failed-check` output.
 - `4.1` writes the job summary; `4.2` uploads `dist/` (the wheel and the sdist, nothing else) as a
   workflow artifact, kept for 5 days. The upload fails if `dist/` is empty. The publish job can upload
   the downloaded directory as is.
@@ -127,11 +129,11 @@ other versions, so run your own test matrix separately.
 
 ## Outputs
 
-| Name              | Description                                                                       |
-| ----------------- | --------------------------------------------------------------------------------- |
-| `package-name`    | `Name` field of the built wheel's metadata (exact spelling of the build backend). |
-| `package-version` | Normalized version of the built wheel.                                            |
-| `failed-check`    | Diagnostic: id of the check that failed (see below); empty on success.            |
+| Name              | Description                                                                               |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| `package-name`    | `Name` field of the built wheel's metadata (exact spelling of the build backend).         |
+| `package-version` | Normalized version of the built wheel.                                                    |
+| `failed-check`    | Diagnostic: id of the failed check, `unexpected` for any other failure; empty on success. |
 
 `package-name` and `package-version` are read from the built wheel, so they are what gets uploaded,
 and are available once step `1.3` has run. If an earlier step fails, the action fails and they are
@@ -139,7 +141,8 @@ empty.
 
 `failed-check` is one of `build`, `dist-contents`, `twine`, `metadata-fields`,
 `unwanted-files`, `size`, `local-version`, `manual-version`, `tag`, `published`, `import`,
-`smoke-wheel`, `entry-points`. It is meant for diagnostics and tests: the annotation
+`smoke-wheel`, `entry-points`. It is `unexpected` when a step outside the checks failed (installing
+`uv`, an invalid `python-version`, the upload). It is meant for diagnostics and tests: the annotation
 and the job summary already say what failed and how to fix it. To read it after a failure, set
 `continue-on-error: true` on the action step.
 
@@ -249,7 +252,7 @@ Breaking changes:
 - **The tag must be exactly `v` + the normalized version** (`v1.0.0rc1`, not `v1.0.0-rc1`).
 - **`smoke-sdist` and `artifact-mismatch` are removed.** `uv build` builds the wheel from the sdist, so
   neither could fail independently of the wheel checks.
-- New output `failed-check`; `twine` is pinned and the `uv` cache is disabled.
+- New output `failed-check` (an id, or `unexpected`); `twine` is pinned and the `uv` cache is disabled.
 
 ## Development
 
