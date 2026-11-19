@@ -39,11 +39,18 @@ jobs:
     permissions:
       contents: read
 
+  # Check that the files shipped to the consumers are the files the action needs
+  export:
+    uses: ./.github/workflows/ci-export.yaml
+    permissions:
+      contents: read
+
   # Test the action from the current repository code (not released yet) on multiple OS and Python versions
   action:
     needs: get-matrix
     uses: ./.github/workflows/ci-action.yaml
     with:
+      use-released: false
       test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
     permissions:
       contents: read

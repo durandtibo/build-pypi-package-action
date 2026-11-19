@@ -8,9 +8,11 @@ A GitHub composite action (`action.yml`) that builds a Python package (sdist + w
 `uv`, validates it (`twine check --strict`, version guards, PyPI duplicate check), smoke-tests
 the wheel, and uploads `dist/` (wheel and sdist only) as an artifact. It exposes the outputs
 `package-name` and `package-version` (read from the built wheel) and the diagnostic `failed-check`. All logic is inline in `action.yml`;
-there is no separate script. `scripts/test-helper.sh` holds assertions shared by the test workflows, and
-`test/fixtures/` holds throwaway packages that the test workflows build. Neither is part of the
-action itself.
+there is no separate script. `scripts/test-helper.sh` (assertions shared by the test jobs) and
+`scripts/load-cases.sh` (turns `test/cases.json` into job matrices), `test/fixtures/` (throwaway
+packages that the test workflows build) and `dev/check_export.sh` (maintainer check of the exported
+files) are not part of the action itself. It is tested on Linux, macOS and Windows (Git Bash); the
+README claims all three.
 
 ## Environment
 
@@ -19,7 +21,7 @@ action itself.
 - Run `make format` and `make lint` before committing. Fix what they report instead of disabling
   rules.
 - The action can only be exercised end to end by GitHub Actions (`ci-action.yaml`). Say so in the
-  PR instead of claiming those tests pass locally.
+  PR instead of claiming those tests pass locally. `make check-export` runs locally.
 
 ## Git workflow
 
@@ -27,7 +29,13 @@ action itself.
   push to `main`.
 - Name branches `<type>/<short-description>` in kebab-case, with type one of: `feat`, `bugfix`,
   `hotfix`, `docs`, `refactor`, `perf`, `test`, `chore`, `ci`.
+- Write commit messages and PR titles as a short imperative sentence starting with a verb such as
+  `Add`, `Fix`, `Update`, `Remove` or `Improve`. Do not use conventional-commit prefixes like
+  `docs:` or `feat:` (the type prefix is only for branch names). The squash-merge appends the PR
+  number, so do not add one.
 - PR descriptions cover what changed, what was deliberately left alone, and any behaviour change.
+- Do not escape special characters such as the backtick (`` ` ``) in PR titles and descriptions
+  (no `\``): the escape characters are not rendered well. Write them as plain Markdown.
 - On conflicts with `main`, merge `origin/main` into the branch; do not rebase and force-push.
 - Update `README.md` when inputs, outputs, behaviour, or workflows change.
 
@@ -59,6 +67,12 @@ action itself.
   build. Bump the two version defaults together (and the README table), deliberately, in their own PR with the quarterly review. Pinning actions does not
   cover them.
 - The default `python-version` (`3.14`) is bumped together with the workflow config.
+- Only ship what the action needs at runtime: files the action itself uses (`action.yml`,
+  `LICENSE`) are exported, and `.gitattributes` marks everything else `export-ignore`. When the
+  action starts using a new file, un-ignore it there and add it to `EXPECTED` in
+  `dev/check_export.sh`. Never make the action read tests, fixtures or other repo files that are not
+  exported. Check the exported set with `make check-export` (or `git archive --worktree-attributes
+HEAD | tar t`).
 
 ## Workflow structure (`.github/workflows/`)
 
@@ -66,21 +80,24 @@ Files are prefixed by role, mirroring `durandtibo/cancel-queued-runs-action`:
 
 - `ci.yaml`: entry point for pull requests, pushes to `main`, a nightly schedule and manual runs. It
   holds no steps, only jobs that call the reusable workflows below.
-  - `lib-get-test-matrix.yaml`: loads the OS list (`os_all`: Linux, macOS, Windows) and the Python
-    versions from `durandtibo/workflow-config-action` once, and exposes them as the `test_matrix`
-    output. Callers pass it down; never hard-code OS or Python lists in a workflow.
+  - `lib-get-test-matrix.yaml`: loads the OS list (`os_matrix`: Linux, macOS, Windows, from
+    `os_all`), `os_latest` (the `*-latest` runners) and the Python versions from
+    `durandtibo/workflow-config-action` once, and exposes them as the `test_matrix` output. It is
+    the same file in every action repository. Callers pass it down; never hard-code OS or Python
+    lists in a workflow.
   - `ci-format.yaml`: checks that YAML, Makefile, shell, and Markdown files are formatted
     (`make format` followed by `git diff --exit-code`) and lints the shell and YAML files.
-  - `ci-action.yaml`: runs the action from this checkout (`uses: ./`), i.e. the version not
-    released yet, against the fixtures in `test/fixtures/` on every OS, and on every Python version
-    on Linux. It covers the success path and the failure paths (already-published version, plain
-    version on a manual run, failing build).
-- `nightly.yaml`: nightly entry point for the last stable release. It calls
-  `nightly-test-released.yaml`, the same tests as `ci-action.yaml` against the last stable
-  release. Update the version in its header comment and in its `uses:` refs when a new release is
-  made.
-- `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and is
-  not called from `ci.yaml`, so it can be a required check.
+  - `ci-export.yaml`: checks the exported set (`make check-export`, `dev/check_export.sh`).
+  - `ci-action.yaml`: the one reusable test workflow, with a boolean input `use-released`. `ci.yaml`
+    calls it with `false`: the action from this checkout (`uses: ./`), i.e. the version not
+    released yet. `nightly.yaml` calls it with `true`: the last release. It runs against the
+    fixtures in `test/fixtures/` and covers the success path and the failure paths (already-published
+    version, plain version on a manual run, failing build).
+- `nightly.yaml`: scheduled entry point that calls `ci-action.yaml` with `use-released: true`. It is
+  not part of `ci.yaml`. There is no separate released-action workflow: update the version in the
+  header comment of `ci-action.yaml` and in its `uses:` refs when a new release is made.
+- `ci-verify-workflows.yaml`: lints the workflow files themselves. It has its own triggers and
+  is not called from `ci.yaml`, so it can be a required check.
 - `security-dependency-review.yaml`: dependency review on pull requests.
 - `security-scorecard.yaml`: OSSF Scorecard supply-chain analysis (weekly, on pushes to `main`, and
   manual runs); results go to the code-scanning dashboard.
@@ -92,8 +109,8 @@ Conventions:
 - Set `permissions: {}` at the workflow level, and declare least-privilege `permissions` on each
   job (and on each job that calls a reusable workflow).
 - Set `timeout-minutes` on every job.
-- Each reusable workflow also has `workflow_dispatch`, so it can be run alone. Add a new check as a
-  new workflow plus a job in `ci.yaml`.
+- Each `ci-*` check is a `workflow_call` workflow that also has `workflow_dispatch`, so it can be
+  run alone. Add a new check as a new `ci-<name>.yaml` plus a job in `ci.yaml`.
 - Put `make` targets in the steps rather than duplicating commands, so local runs and CI match.
 - Start each file with a comment saying what it does, and update it when the behaviour changes.
 
@@ -102,21 +119,20 @@ Conventions:
 - Tests are workflow-based: a new behaviour or guard in `action.yml` needs a fixture under
   `test/fixtures/` (or an extra assertion) and a row in `test/cases.json`, the single file with the
   case tables (`accept`, `reject`, `reject-manual`, `reject-tag-mismatch`). A row has `"released":
-false` until the last release has the feature; the nightly workflow runs only the rows with
-  `"released": true` (`scripts/load-cases.sh`). `ci-action.yaml` and `nightly-test-released.yaml` have
-  the same structure: `build`/`build-python` (success path), `accept` (packages that must build),
-  `reject` (packages that must fail, with the expected `failed-check` id), `reject-manual`
-  (`workflow_dispatch` only), `reject-tag-mismatch` (tag ref only) and `verify-artifact`. They differ
-  only in the `uses:` ref, in the artifact names and in the mode passed to
-  `load-cases.sh`. A new case is a new row in `test/cases.json`, not a new job.
-- Put assertions shared by both workflows in `scripts/test-helper.sh` so the two only differ in
-  which action ref they exercise.
+false` until the last release has the feature; the released run (`use-released: true`) loads only
+  the rows with `"released": true` (`scripts/load-cases.sh`). A new case is a new row in
+  `test/cases.json`, not a new job.
+- `ci-action.yaml` has these jobs: `test` (success path on the full matrix), `accept` (packages that
+  must build), `reject` (packages that must fail, with the expected `failed-check` id),
+  `reject-manual` (`workflow_dispatch` only), `accept-plain-version-outside-manual-run`,
+  `reject-tag-mismatch` (tag ref only).
+- Put assertions in `scripts/test-helper.sh`, not in the workflow, so the local and the released run
+  share them.
 - Failure-path fixtures must assert that the action fails for the expected reason, not just that
   it fails: use `assert_failed_check <id> "${FAILED_CHECK}"` with the action's `failed-check` output
   (set `continue-on-error: true` on the action step). Assert the id, never the message text.
-- `nightly-test-released.yaml` may only assert behaviour that exists in the last release. A case
-  that needs a new feature (`failed-check`, ...) reaches it after the release that contains the
-  feature; until then it keeps asserting the outcome only.
+- A case that needs a feature that the last release lacks (`failed-check`, ...) has
+  `"released": false` and reaches the released run after the release that contains the feature.
 - `unexpected` has no row: its only trigger is an invalid input. Check it by hand after changing step
   4.3: run the action with `python-version: "9.9"` and `continue-on-error: true` and read
   `failed-check`.
@@ -126,18 +142,66 @@ false` until the last release has the feature; the nightly workflow runs only th
 - Every bug fix needs a regression test that fails without the fix.
 - If a check fails for a real reason, report it rather than weakening the test.
 
+## Testing strategy
+
+The strategy is the same for all the action repositories of `durandtibo`. The full reasoning and
+the properties (T1 to T16) are in `review/testing.md` of `durandtibo/cancel-queued-runs-action`.
+This repository follows it: the action cases are the rows of `test/cases.json`, read by
+`ci-action.yaml`.
+
+Three levels:
+
+1. **Code**: each script or function, tested alone with mocks. This repository has no level 1: all
+   the logic is inline in `action.yml`, so it is tested only through the action (the README says so).
+   If logic moves to scripts, test them with bats and add a `ci-shell.yaml`.
+2. **Local action**: the action from this checkout (`uses: ./`) in a real workflow.
+3. **Released action**: the latest stable release (`uses: durandtibo/build-pypi-package-action@<sha>`),
+   run nightly with the same cases as level 2. Never run it on pull requests.
+
+Rules:
+
+- Test a behaviour at the cheapest level that can show it. The action tests (levels 2 and 3) check
+  the contract and the wiring: inputs reach the steps, outputs are set, the action fails with the
+  right `failed-check` id. Because the logic is inline, the guards are tested here, one fixture row
+  per guard.
+- Split the action tests in two. **General behaviour** (the default usage) runs on the full matrix:
+  `os_matrix` (Linux, macOS, Windows) crossed with `python_versions_standard`, because the action
+  runs in the user's Python. **Edge cases** (one input, one invalid value, an unusual file) run on one
+  runner, or on `os_latest` when the case depends on the OS. There is no reduced matrix on pull
+  requests: the same matrix runs on pull requests, pushes and the schedule.
+- Never write an OS or a Python version in a workflow: read the lists from
+  `durandtibo/workflow-config-action` through `lib-get-test-matrix.yaml`.
+- Layout: one reusable `ci-action.yaml` with a boolean input `use-released`. `ci.yaml` calls it with
+  `false`, `nightly.yaml` with `true`. Each job has two action steps, `uses: ./` with
+  `if: ${{ !inputs.use-released }}` (`id: local`) and the pinned release with
+  `if: ${{ inputs.use-released }}` (`id: released`), and one verify step reading
+  `steps.local.outputs.x || steps.released.outputs.x`.
+- Put the cases in a JSON file (a new case is a row, not a job). A row has `"released": false` until
+  the last release has the feature; the released run skips those rows.
+- Failure paths use `continue-on-error: true`, an `id`, and a step that asserts the outcome and the
+  `failed-check` id. Assert an id or an exact output, not a message. A negative test needs a positive
+  run before it, so it cannot pass for the wrong reason (the `test` job and `accept` rows are the
+  positive controls for the `reject` rows).
+- Tests have no side effects outside the runner: throwaway packages and artifacts, no publishing.
+  Cases that depend on the trigger (`workflow_dispatch`, a tag ref) run in their own job with an
+  `if`, and the header of `ci-action.yaml` says how to run them by hand.
+- Check what is shipped: the exported set (`make check-export`) must contain every file the action
+  needs, because `uses: ./` runs the whole checkout and hides a missing file.
+- Set `timeout-minutes`, `fail-fast: false` and `max-parallel` on matrix jobs.
+- Keep the README inputs and outputs in step with `action.yml`.
+
 ## Release procedure
 
 1. Merge to `main` with green checks, including `nightly.yaml` on the previous release.
 2. Tag the commit `vX.Y.Z` (immutable) and create the GitHub release; list breaking changes in the
    notes.
 3. Do not create or move a floating major tag (`vX`): releases are only immutable `vX.Y.Z` tags.
-4. Update the version and SHA in the `uses:` refs and in the header of
-   `nightly-test-released.yaml`, flip `released` to `true` in `test/cases.json` for the features of the new release, and update the
+4. Update the version and SHA in the `uses:` refs and in the header of `ci-action.yaml`, flip
+   `released` to `true` in `test/cases.json` for the features of the new release, and update the
    `@vX.Y.Z` version in the README examples.
 
 ## Reporting
 
-- State which checks ran (`make lint`, `make format`) and which did not.
+- State which checks ran (`make lint`, `make format`, `make check-export`) and which did not.
 - Note that CI was not awaited, and that the workflow tests only run on GitHub.
 - Report failures that already exist on `main` rather than hiding them.

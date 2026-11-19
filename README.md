@@ -286,17 +286,24 @@ The action can only be exercised end to end on GitHub Actions; there is no local
   `Requires-Python`, a packaged `.env`, a local version, a broken entry point, and a plain or post
   version on a manual run). They are not part of the action.
 - `scripts/test-helper.sh` holds the assertions shared by the test workflows.
-- `ci-action.yaml` runs the action from the current checkout (`uses: ./`) against the fixtures on
-  Linux, macOS, and Windows, and on every Python version on Linux. Its jobs are driven by the case tables
-  of `test/cases.json`: `accept` (packages that must build) and `reject` (packages that must fail,
-  with the `failed-check` id that the failure must carry). A new case is a new row in that one file.
+- `ci-action.yaml` is one reusable workflow that tests the action against the fixtures. Its boolean
+  input `use-released` selects what it runs: `false` (called by `ci.yaml`) runs the action from the
+  current checkout (`uses: ./`) with every row of `test/cases.json`; `true` (called by `nightly.yaml`)
+  runs the last stable release with the rows marked `"released": true`, the features that release
+  has. Both runs share the same jobs and assertions, so they cannot drift.
+- The tests are split in two groups. **General behaviour** runs on the full matrix from
+  `durandtibo/workflow-config-action` (every OS, Linux, macOS and Windows, and every standard Python
+  version): the `test` job builds the fixture package, checks the outputs and checks that the uploaded
+  artifact holds only the wheel and the sdist. **Edge cases** run on one runner: the case tables of
+  `test/cases.json`, `accept` (packages that must build) and `reject` (packages that must fail, with the
+  `failed-check` id that the failure must carry). A new case is a new row in that one file;
   `scripts/load-cases.sh` turns it into the job matrices.
 - `reject-manual` only runs on `workflow_dispatch` and `reject-tag-mismatch` only when the workflow is
   run by hand on a tag ref (`gh workflow run ci.yaml --ref <tag>`), because a pull request job cannot
   reproduce those triggers. All other jobs are skipped on a tag ref.
-- `nightly-test-released.yaml` has the same structure and tests the last stable release with the rows
-  of `test/cases.json` marked `"released": true`; the other rows are for features that are not
-  released yet. Its assertions are the same as those of `ci-action.yaml`.
+- `.gitattributes` marks everything except `action.yml` and `LICENSE` as `export-ignore`, so a release
+  ships only what the action needs. `make check-export` (`ci-export.yaml`) checks the exported set,
+  because `uses: ./` runs the whole checkout and would hide a missing file.
 
 ### Workflows
 
@@ -306,10 +313,11 @@ Files in `.github/workflows/` are prefixed by role:
 | -------------------------- | ---------------------------------------------------------------------------------- |
 | `ci.yaml`                  | Entry point (PRs, pushes to `main`, nightly, manual); calls the reusable workflows |
 | `ci-format.yaml`           | Checks formatting and lints shell and YAML files                                   |
-| `ci-action.yaml`           | Tests the unreleased action against the fixtures                                   |
+| `ci-action.yaml`           | Tests the unreleased action, or the last release, against the fixtures             |
+| `ci-export.yaml`           | Checks that a release ships only the files the action needs                        |
 | `ci-verify-workflows.yaml` | Lints the workflow files; separate triggers so it can be a required check          |
 | `lib-get-test-matrix.yaml` | Loads the OS and Python version matrices once                                      |
-| `nightly*.yaml`            | Nightly tests of the last stable release                                           |
+| `nightly.yaml`             | Nightly tests of the last stable release (`ci-action.yaml` with `use-released`)    |
 | `security-*.yaml`          | Dependency review and OSSF Scorecard                                               |
 | `bot-*.yaml`               | Scheduled automation (pin actions, sync `.make/`, format files, cancel stale runs) |
 
