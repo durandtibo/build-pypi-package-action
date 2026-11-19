@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Writes the test matrices of ci-action.yaml and nightly-test-released.yaml to
+# Writes the test matrices of ci-action.yaml (input use-released false or true) to
 # $GITHUB_OUTPUT, one output per job (accept, reject, reject-manual,
 # reject-tag-mismatch), from the single case file test/cases.json.
 # Usage: load-cases.sh <all|released>

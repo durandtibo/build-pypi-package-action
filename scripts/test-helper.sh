@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Shared assertions for ci-action.yaml and nightly-test-released.yaml, so the two
-# workflows only differ in which build-package action ref they exercise
-# (local checkout vs. last stable release), not in verification logic.
+# Shared assertions of ci-action.yaml, which tests both the current checkout and the last
+# stable release (input use-released), so the two only differ in which build-package action
+# ref they exercise, not in verification logic.
 set -euo pipefail
 
 # assert_metadata <actual-name> <actual-version> <expected-name> <expected-version>

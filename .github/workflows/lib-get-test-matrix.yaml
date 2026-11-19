@@ -1,14 +1,13 @@
 name: Get Test Matrix
 
 # This reusable workflow loads the shared Python-version and OS matrices from
-# durandtibo/workflow-config-action's built-in default config and exposes
+# the built-in default config of durandtibo/workflow-config-action and exposes
 # them as a single output, so the supported version/OS lists only need to be
 # updated in one place (that action's config) instead of being duplicated
 # across every test workflow.
 #
-# The OS list covers Linux, macOS, and Windows (os_all), because the action
-# is tested on all three. The Python list only holds the standard
-# (non-free-threaded) versions, because the action builds with uv.
+# It uses the latest released action, not the code of this checkout, so a
+# broken change cannot take the whole test matrix down with it.
 #
 # Usage:
 #   jobs:
@@ -19,14 +18,14 @@ name: Get Test Matrix
 #       needs: get-matrix
 #       strategy:
 #         matrix:
-#           python-version: ${{ fromJson(needs.get-matrix.outputs.test_matrix).python_versions_standard }}
+#           python-version: ${{ fromJson(needs.get-matrix.outputs.test_matrix).python_versions }}
 #           os: ${{ fromJson(needs.get-matrix.outputs.test_matrix).os_matrix }}
 
 on:
   workflow_call:
     outputs:
       test_matrix:
-        description: "JSON string containing python_versions, python_versions_standard and os_matrix"
+        description: "JSON string containing python_versions, python_versions_standard, os_matrix (all OS) and os_latest (the *-latest OS)"
         value: ${{ jobs.get-matrix.outputs.test_matrix }}
 
   workflow_dispatch: # Allows manual triggering for testing purposes
@@ -43,7 +42,7 @@ jobs:
       test_matrix: ${{ steps.build-matrix.outputs.test_matrix }}
     steps:
       - name: Load workflow config
-        uses: durandtibo/workflow-config-action@293a1c5eff18a9c485359d32d3035fdaaddcb955 # ratchet:durandtibo/workflow-config-action@v0.3.0
+        uses: durandtibo/workflow-config-action@9dbe1b206e5367c4c7f9aeb658b7e91d5749a3fa # ratchet:durandtibo/workflow-config-action@v0.3.1
         id: cfg
 
       - name: Build test matrix
@@ -57,7 +56,7 @@ jobs:
             --argjson python_versions "$PYTHON_VERSIONS" \
             --argjson python_versions_standard "$PYTHON_VERSIONS_STANDARD" \
             --argjson os_matrix "$OS_ALL" \
-            '{python_versions: $python_versions, python_versions_standard: $python_versions_standard, os_matrix: $os_matrix}')
+            '{python_versions: $python_versions, python_versions_standard: $python_versions_standard, os_matrix: $os_matrix, os_latest: ($os_matrix | map(select(endswith("-latest"))))}')
           echo "test_matrix=$test_matrix" >> "$GITHUB_OUTPUT"
 
       - name: Display test matrix

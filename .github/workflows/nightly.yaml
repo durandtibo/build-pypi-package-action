@@ -1,5 +1,7 @@
 # Nightly workflow testing the last stable release of the action, to catch
-# regressions in what consumers pick up. The current (unreleased) code is
+# regressions in what consumers pick up. It calls ci-action.yaml with
+# use-released: true, so the cases are the same as in ci.yaml (only the rows of
+# test/cases.json marked "released": true). The current (unreleased) code is
 # tested nightly by ci.yaml.
 #
 # Permissions are set at the job level, not the workflow level.
@@ -23,8 +25,9 @@ jobs:
   # Test the last stable release of the action
   test-released:
     needs: get-matrix
-    uses: ./.github/workflows/nightly-test-released.yaml
+    uses: ./.github/workflows/ci-action.yaml
     with:
+      use-released: true
       test-matrix: ${{ needs.get-matrix.outputs.test_matrix }}
     permissions:
       contents: read
