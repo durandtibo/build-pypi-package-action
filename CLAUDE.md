@@ -42,6 +42,8 @@ claimed.
   (no `\``): the escape characters are not rendered well. Write them as plain Markdown.
 - On conflicts with `main`, merge `origin/main` into the branch; do not rebase and force-push.
 - Update `README.md` when inputs, outputs, behaviour, or workflows change.
+- Releases are immutable exact version tags (`v0.1.0`, ...). Do not create or move floating tags
+  (`v0`, `latest`) and do not document them as an option (see the release procedure below).
 
 ## Action rules (`action.yaml`)
 
@@ -79,6 +81,21 @@ claimed.
   exported. Check the exported set with `make check-export` (or `git archive --worktree-attributes
 HEAD | tar t`).
 
+## Shell script rules (`scripts/*.sh`, `dev/*.sh`)
+
+These scripts are maintainer and test tooling, not part of the action, and run on the CI runners
+(`scripts/test-helper.sh` is sourced by the test jobs on Linux, macOS and Windows Git Bash).
+
+- Keep them portable across those platforms (no GNU-only flags in `scripts/test-helper.sh`).
+- Start with `set -euo pipefail`. Quote all variables and validate inputs early with a clear
+  `::error::` message.
+- Keep logic in small functions (one assertion per function in `scripts/test-helper.sh`, no fixture
+  knowledge in it).
+- Code must pass `shellcheck` and `shfmt` via `make lint` / `make format`.
+- A function that can fail is followed by an explicit `return 1` on failure
+  (`cmd || { echo "::error::..."; return 1; }`). Never rely on `set -e`: a caller in an `||` list
+  turns it off.
+
 ## Workflow structure (`.github/workflows/`)
 
 Files are prefixed by role, mirroring `durandtibo/cancel-queued-runs-action`:
@@ -91,8 +108,10 @@ Files are prefixed by role, mirroring `durandtibo/cancel-queued-runs-action`:
     `os_macos`, `os_latest` (the `*-latest` runners), `python_versions` and
     `python_versions_standard`. Callers pass it down; never hard-code OS or Python lists in a
     workflow.
-  - `ci-format.yaml`: checks that YAML, Makefile, shell, and Markdown files are formatted
-    (`make format` followed by `git diff --exit-code`) and lints the shell and YAML files.
+  - `ci-format.yaml`: two jobs. `format` checks that YAML, Makefile, shell, and Markdown files are
+    formatted (`make format` followed by `git diff --exit-code`); `lint` runs `make lint` (YAML,
+    Makefile, shell, Markdown and the workflow files with actionlint), so CI and a local run use
+    the same target.
   - `ci-export.yaml`: checks the exported set (`make check-export`, `dev/check_export.sh`).
   - `ci-readme.yaml`: checks that the README inputs, outputs and defaults match `action.yaml`
     (`make check-readme`, `dev/check_readme.sh`).
@@ -138,6 +157,10 @@ false` until the last release has the feature; the released run (`use-released: 
 - The full matrix is 18 OS x 5 Python versions = 90 cells per run (`workflow-config-action`
   v0.3.1), the same on pull requests, pushes and the schedule. Only `test` crosses it; update this
   count when the config changes.
+- General behaviour is the `test` job only (the default usage, which also sets `artifact-name`):
+  it is the one job that crosses `os_matrix` and `python_versions_standard`. Add a second job on the
+  matrix (`test-<usage>`) only for a documented usage that the default does not cover, because each
+  one costs 90 cells. Every other job is an edge case and runs on one runner.
 - Every input has a case that sets it and shows that it reaches the step that uses it. An input
   that changes the outcome has a `reject` row whose value makes the step fail with the expected
   `failed-check` id (`twine-version`, `twine-exclude-newer`, `import-name`), or a row that asserts
