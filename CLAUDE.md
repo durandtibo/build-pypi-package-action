@@ -133,7 +133,11 @@ false` until the last release has the feature; the released run (`use-released: 
 - `ci-action.yaml` has these jobs: `test` (success path on the full matrix), `accept` (packages that
   must build), `reject` (packages that must fail, with the expected `failed-check` id),
   `reject-manual` (`workflow_dispatch` only), `accept-plain-version-outside-manual-run`,
-  `reject-tag-mismatch` (tag ref only).
+  `reject-tag-mismatch` (tag ref only) and `test-export` (runs the action from the exported
+  archive, so a file wrongly marked `export-ignore` fails; local run only).
+- The full matrix is 18 OS x 5 Python versions = 90 cells per run (`workflow-config-action`
+  v0.3.1), the same on pull requests, pushes and the schedule. Only `test` crosses it; update this
+  count when the config changes.
 - Every input has a case that sets it and shows that it reaches the step that uses it. An input
   that changes the outcome has a `reject` row whose value makes the step fail with the expected
   `failed-check` id (`twine-version`, `twine-exclude-newer`, `import-name`), or a row that asserts
@@ -154,6 +158,8 @@ false` until the last release has the feature; the released run (`use-released: 
 - Every guard has a fixture row, except a closed list of review-only exceptions: `dist-contents`
   (no sane backend writes a second wheel) and the `published` check when PyPI is down (non-404
   answer). Add to this list only with a reason; a check no fixture can fail should not exist.
+- What cannot be tested in CI is written down with the check that covers it: the trigger-dependent
+  jobs (header of `ci-action.yaml`), `unexpected` (by hand, above) and the review-only guards.
 - Every bug fix needs a regression test that fails without the fix.
 - If a check fails for a real reason, report it rather than weakening the test.
 

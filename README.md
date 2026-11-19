@@ -308,6 +308,7 @@ The action can only be exercised end to end on GitHub Actions; there is no local
 - `reject-manual` only runs on `workflow_dispatch` and `reject-tag-mismatch` only when the workflow
   is run by hand on a tag ref (`gh workflow run ci.yaml --ref <tag>`), because a pull request job
   cannot reproduce those triggers. All other jobs are skipped on a tag ref.
+- `test-export` runs the action from the exported archive (`git archive`) instead of the checkout.
 - `.gitattributes` marks everything except `action.yaml` and `LICENSE` as `export-ignore`, so a release
   ships only what the action needs. `make check-export` (`ci-export.yaml`) checks the exported set,
   because `uses: ./` runs the whole checkout and would hide a missing file.
