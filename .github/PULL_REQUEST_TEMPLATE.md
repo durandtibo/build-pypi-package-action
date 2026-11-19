@@ -10,6 +10,6 @@ Say what was deliberately left alone and any behaviour change (flag breaking cha
 
 - [ ] I have performed a self-review of my code
 - [ ] `make format` and `make lint` pass
-- [ ] If it changes `action.yml`, I have added a fixture or assertion and a row in `test/cases.json`
+- [ ] If it changes `../action.yaml`, I have added a fixture or assertion and a row in `test/cases.json`
 - [ ] If inputs, outputs, behaviour or workflows changed, I have updated `README.md`
 - [ ] I understand the workflow tests only run on GitHub Actions (CI)

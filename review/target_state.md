@@ -19,7 +19,7 @@ The target state must satisfy all of these. Section 6 checks each one against th
 | P3  | **Ground truth**   | Name and version come from the built wheel, never from a second parser of `pyproject.toml`. Guards check what will be uploaded.                                                                                        |
 | P4  | **Reproducible**   | Every tool the action installs is pinned: `uv`, `twine` and, as far as `uv` allows, twine's dependencies. No cache is read or written. Only `setup-uv` and `upload-artifact` are third-party actions, pinned to SHAs.  |
 | P5  | **Fast**           | Local checks run before network checks; nothing is built, installed or parsed twice. The slow work (build, dependency install) happens once.                                                                           |
-| P6  | **Simple**         | All logic is inline in `action.yml`. Three inputs, two outputs plus one diagnostic. Each step is readable alone.                                                                                                       |
+| P6  | **Simple**         | All logic is inline in `../action.yaml`. Three inputs, two outputs plus one diagnostic. Each step is readable alone.                                                                                                   |
 | P7  | **Portable**       | Same behaviour on Linux, macOS and Windows (Git Bash). Only `bash`, `curl`, `uv` and what `uv` installs are assumed.                                                                                                   |
 | P8  | **Safe to chain**  | `dist/` holds exactly one wheel and one sdist, so a publish job can upload the directory as is.                                                                                                                        |
 | P9  | **Secure**         | Inputs and step outputs reach scripts through `env:` only. `contents: read` is enough. No `id-token`, no attestation, no secret in the build job.                                                                      |
@@ -59,7 +59,7 @@ Resolve twine with `uvx --exclude-newer <date> twine@<x.y.z>`; **(verified local
 the flag and resolves twine's dependencies as of that date. Scope it to twine only: applying it
 globally would block the user's own build requirements.
 
-### F2. The sdist smoke test (3.3) and the wheel/sdist comparison (1.6) cannot fail independently (violates P5, P10)
+### F2. The sdist smoke test (3.3) and the wheel/sdist comparison (1.6) are coupled (P5, P10)
 
 `uv build` builds the sdist and then builds the wheel _from that sdist_ **(verified locally: the log
 says `Building wheel from source distribution...`)**. Consequences:
@@ -400,7 +400,7 @@ scripts/test-helper.sh        shared assertions (assert_released_* removed)
 - **`python-version` default taken from `requires-python`.** Makes the build depend on the runner's
   preinstalled Pythons. An explicit, bumped default is reproducible (P4).
 - **Moving the inline Python to a script file in the action.** Adds a second language file and
-  makes the action depend on its own checkout path. Revisit only if `action.yml` grows past about
+  makes the action depend on its own checkout path. Revisit only if `../action.yaml` grows past about
   400 lines (it is 358 today, 330 after this review).
 - **Cheap-checks-first across the whole action.** The version, which the guards need, only exists
   after the build, and the build dominates the run. Only the `twine` move (F6) is worth doing.
@@ -428,7 +428,7 @@ changes first, so a regression is easy to attribute.
 
 ## 9. What was not done
 
-- No change was made to `action.yml`, the workflows or the tests.
+- No change was made to `../action.yaml`, the workflows or the tests.
 - Only these claims were run: the `uv publish --dry-run` comparison, `uvx --exclude-newer`, and the
   `uv build` log line (all on macOS, `uv 0.13.7`). The Python sketches in 4.3 were not executed.
 - Nothing was run on Linux or Windows, and nothing was run in GitHub Actions.
