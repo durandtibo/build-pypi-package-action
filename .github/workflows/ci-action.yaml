@@ -13,7 +13,10 @@
 # wiring (inputs, outputs, failed-check ids), not the logic of the steps. They are split in
 # two groups:
 #   - general behaviour, on the full matrix (every OS of os_matrix, Linux, macOS and
-#     Windows, and every standard Python version): test;
+#     Windows, and every standard Python version): test. The cost is bounded: with
+#     workflow-config-action v0.3.1 that is 18 OS x 5 Python versions = 90 cells per run, the
+#     same on pull requests, pushes and the schedule. Every edge case below is one runner per row;
+#   - the exported archive: test-export runs the action from `git archive` (what a release ships);
 #   - edge cases, on one runner: accept
 #     (packages that must build), reject, reject-manual, reject-tag-mismatch (packages that
 #     must be rejected, with the failed-check id that the rejection must carry).
@@ -155,6 +158,44 @@ jobs:
         run: |
           source scripts/test-helper.sh
           assert_dist_artifact
+
+  # What consumers get is what is tested: run the action from the exported archive, not from the
+  # checkout, so a file marked export-ignore by mistake fails here. Only the code of this checkout
+  # is concerned: the released action is what consumers already get.
+  test-export:
+    if: ${{ !inputs.use-released && github.ref_type != 'tag' }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Extract the exported archive
+        shell: bash
+        run: |
+          mkdir .exported-action
+          git archive --worktree-attributes HEAD | tar x -C .exported-action
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg/. .
+
+      - name: Run build-package action (exported)
+        id: exported
+        uses: ./.exported-action
+        with:
+          artifact-name: dist-export
+
+      - name: Assert extracted metadata matches the fixture
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ steps.exported.outputs.package-name }}
+          PACKAGE_VERSION: ${{ steps.exported.outputs.package-version }}
+        run: |
+          source scripts/test-helper.sh
+          assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
 
   # Edge cases, packages that must build. Each row is a case; `stale` first fills dist/ with stale
   # files, which must be gone afterwards; `import-name` is passed to the action. The OS does not
