@@ -120,6 +120,20 @@
       "expected": "size",
       "stage": "oversized",
       "released": true
+    },
+    {
+      "case": "invalid-twine-version",
+      "fixture": "pkg",
+      "expected": "twine",
+      "twine-version": "0.0.0-nope",
+      "released": true
+    },
+    {
+      "case": "twine-exclude-newer",
+      "fixture": "pkg",
+      "expected": "twine",
+      "twine-exclude-newer": "2026-01-01",
+      "released": true
     }
   ],
   "reject-manual": [

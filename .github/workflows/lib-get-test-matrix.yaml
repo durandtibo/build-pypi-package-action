@@ -25,7 +25,7 @@ on:
   workflow_call:
     outputs:
       test_matrix:
-        description: "JSON string containing python_versions, python_versions_standard, os_matrix (all OS) and os_latest (the *-latest OS)"
+        description: "JSON string containing python_versions, python_versions_standard, os_matrix (all OS), os_macos and os_latest (the *-latest OS)"
         value: ${{ jobs.get-matrix.outputs.test_matrix }}
 
   workflow_dispatch: # Allows manual triggering for testing purposes
@@ -51,12 +51,14 @@ jobs:
           PYTHON_VERSIONS: ${{ steps.cfg.outputs.python_versions }}
           PYTHON_VERSIONS_STANDARD: ${{ steps.cfg.outputs.python_versions_standard }}
           OS_ALL: ${{ steps.cfg.outputs.os_all }}
+          OS_MACOS: ${{ steps.cfg.outputs.os_macos }}
         run: |
           test_matrix=$(jq -nc \
             --argjson python_versions "$PYTHON_VERSIONS" \
             --argjson python_versions_standard "$PYTHON_VERSIONS_STANDARD" \
             --argjson os_matrix "$OS_ALL" \
-            '{python_versions: $python_versions, python_versions_standard: $python_versions_standard, os_matrix: $os_matrix, os_latest: ($os_matrix | map(select(endswith("-latest"))))}')
+            --argjson os_macos "$OS_MACOS" \
+            '{python_versions: $python_versions, python_versions_standard: $python_versions_standard, os_matrix: $os_matrix, os_macos: $os_macos, os_latest: ($os_matrix | map(select(endswith("-latest"))))}')
           echo "test_matrix=$test_matrix" >> "$GITHUB_OUTPUT"
 
       - name: Display test matrix

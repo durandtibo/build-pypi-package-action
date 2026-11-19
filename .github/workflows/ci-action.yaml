@@ -230,7 +230,11 @@ jobs:
           assert_stale_dist_cleared
 
   # Edge cases, packages that must be rejected. `expected` is the failed-check id of the check that
-  # must fail. The checks do not depend on the OS, so one runner is enough.
+  # must fail. The checks do not depend on the OS, so one runner is enough. The rows that set
+  # `twine-version` or `twine-exclude-newer` prove that these inputs reach step 1.9: an unknown twine
+  # version, and a cutoff date before the release of the default twine, make it fail. An empty
+  # input overrides the default of the action, so `twine-version` falls back to the default
+  # of action.yaml (keep it in step; an older pin stays valid).
   reject:
     name: reject (${{ matrix.case }})
     needs: cases
@@ -240,6 +244,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
+      max-parallel: 8
       fail-fast: false
       matrix: ${{ fromJson(needs.cases.outputs.reject) }}
     steps:
@@ -267,6 +272,8 @@ jobs:
         uses: ./
         with:
           import-name: ${{ matrix.import-name }}
+          twine-version: ${{ matrix.twine-version || '7.0.0' }}
+          twine-exclude-newer: ${{ matrix.twine-exclude-newer }}
 
       # The error annotation of this step is expected: the step must fail
       - name: Run build-package action (released)
@@ -276,6 +283,8 @@ jobs:
         uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
         with:
           import-name: ${{ matrix.import-name }}
+          twine-version: ${{ matrix.twine-version || '7.0.0' }}
+          twine-exclude-newer: ${{ matrix.twine-exclude-newer }}
 
       - name: Assert build-package action failed for the expected reason
         shell: bash
@@ -300,6 +309,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
+      max-parallel: 8
       fail-fast: false
       matrix: ${{ fromJson(needs.cases.outputs.reject-manual) }}
     steps:
@@ -394,6 +404,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
+      max-parallel: 8
       fail-fast: false
       matrix: ${{ fromJson(needs.cases.outputs.reject-tag-mismatch) }}
     steps:
