@@ -13,13 +13,14 @@
 # wiring (inputs, outputs, failed-check ids), not the logic of the steps. They are split in
 # two groups:
 #   - general behaviour, on the full matrix (every OS of os_matrix, Linux, macOS and
-#     Windows, and every standard Python version): test. The cost is bounded: with
-#     workflow-config-action v0.3.1 that is 18 OS x 5 Python versions = 90 cells per run, the
-#     same on pull requests, pushes and the schedule. Every edge case below is one runner per row;
-#   - the exported archive: test-export runs the action from `git archive` (what a release ships);
-#   - edge cases, on one runner: accept
-#     (packages that must build), reject, reject-manual, reject-tag-mismatch (packages that
-#     must be rejected, with the failed-check id that the rejection must carry).
+#     Windows, and every standard Python version): test, the default usage. It is the only job
+#     that crosses the matrix, which bounds the cost: with workflow-config-action v0.3.1 that is
+#     18 OS x 5 Python versions = 90 cells per run, the same on pull requests, pushes and the
+#     schedule;
+#   - edge cases, on one runner: accept (packages that must build), reject, reject-manual,
+#     reject-tag-mismatch (packages that must be rejected, with the failed-check id that the
+#     rejection must carry), accept-plain-version-outside-manual-run, and test-export (the
+#     action run from the exported archive, i.e. what a release ships).
 # A new case is a new row in test/cases.json, not a new job.
 # Safe to run on every push/PR: no publishing or signing.
 #
