@@ -1,0 +1,24 @@
+# Check that the inputs and outputs documented in README.md (names and defaults) are the ones
+# declared in action.yaml (`make check-readme`, dev/check_readme.sh).
+
+name: Check README
+on:
+  workflow_call:
+  workflow_dispatch: # to trigger manually
+
+permissions: {}
+
+jobs:
+  check-readme:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Check the documented inputs and outputs
+        run: |
+          make check-readme

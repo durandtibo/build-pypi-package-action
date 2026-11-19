@@ -8,12 +8,14 @@ A GitHub composite action (`action.yaml`) that builds a Python package (sdist + 
 `uv`, validates it (`twine check --strict`, version guards, PyPI duplicate check), smoke-tests
 the wheel, and uploads `dist/` (wheel and sdist only) as an artifact. It exposes the outputs
 `package-name` and `package-version` (read from the built wheel) and the diagnostic `failed-check`.
-All logic is inline in `action.yaml`;
-there is no separate script. `scripts/test-helper.sh` (assertions shared by the test jobs) and
-`scripts/load-cases.sh` (turns `test/cases.json` into job matrices), `test/fixtures/` (throwaway
-packages that the test workflows build) and `dev/check_export.sh` (maintainer check of the exported
-files) are not part of the action itself. It is tested on Linux, macOS and Windows (Git Bash); the
-README claims all three.
+All logic is inline in `action.yaml`; there is no separate script. `scripts/test-helper.sh`
+(assertions shared by the test jobs), `scripts/load-cases.sh` (turns `test/cases.json` into job
+matrices), `test/fixtures/` (throwaway packages that the test workflows build), `dev/check_export.sh`
+(maintainer check of the exported files) and `dev/check_readme.sh` (maintainer check that the README
+documents the inputs and outputs of `action.yaml`) are not part of the action itself. It is tested on
+Linux, macOS and Windows (Git Bash) and on every standard Python version; the README claims all of
+them, so every OS and Python version claimed is in a test matrix and every cell of a matrix is
+claimed.
 
 ## Environment
 
@@ -22,7 +24,8 @@ README claims all three.
 - Run `make format` and `make lint` before committing. Fix what they report instead of disabling
   rules.
 - The action can only be exercised end to end by GitHub Actions (`ci-action.yaml`). Say so in the
-  PR instead of claiming those tests pass locally. `make check-export` runs locally.
+  PR instead of claiming those tests pass locally. `make test` (`make check-export` and
+  `make check-readme`) runs locally.
 
 ## Git workflow
 
@@ -82,14 +85,17 @@ Files are prefixed by role, mirroring `durandtibo/cancel-queued-runs-action`:
 
 - `ci.yaml`: entry point for pull requests, pushes to `main`, a nightly schedule and manual runs. It
   holds no steps, only jobs that call the reusable workflows below.
-  - `lib-get-test-matrix.yaml`: loads the OS list (`os_matrix`: Linux, macOS, Windows, from
-    `os_all`), `os_latest` (the `*-latest` runners) and the Python versions from
-    `durandtibo/workflow-config-action` once, and exposes them as the `test_matrix` output. It is
-    the same file in every action repository. Callers pass it down; never hard-code OS or Python
-    lists in a workflow.
+  - `lib-get-test-matrix.yaml`: loads the lists from `durandtibo/workflow-config-action` once, and
+    exposes them as the `test_matrix` output with the keys that every action repository has:
+    `os_matrix` (Linux, macOS and Windows, from `os_all`, because the README claims Windows),
+    `os_macos`, `os_latest` (the `*-latest` runners), `python_versions` and
+    `python_versions_standard`. Callers pass it down; never hard-code OS or Python lists in a
+    workflow.
   - `ci-format.yaml`: checks that YAML, Makefile, shell, and Markdown files are formatted
     (`make format` followed by `git diff --exit-code`) and lints the shell and YAML files.
   - `ci-export.yaml`: checks the exported set (`make check-export`, `dev/check_export.sh`).
+  - `ci-readme.yaml`: checks that the README inputs, outputs and defaults match `action.yaml`
+    (`make check-readme`, `dev/check_readme.sh`).
   - `ci-action.yaml`: the one reusable test workflow, with a boolean input `use-released`. `ci.yaml`
     calls it with `false`: the action from this checkout (`uses: ./`), i.e. the version not
     released yet. `nightly.yaml` calls it with `true`: the last release. It runs against the
@@ -128,6 +134,13 @@ false` until the last release has the feature; the released run (`use-released: 
   must build), `reject` (packages that must fail, with the expected `failed-check` id),
   `reject-manual` (`workflow_dispatch` only), `accept-plain-version-outside-manual-run`,
   `reject-tag-mismatch` (tag ref only).
+- Every input has a case that sets it and shows that it reaches the step that uses it. An input
+  that changes the outcome has a `reject` row whose value makes the step fail with the expected
+  `failed-check` id (`twine-version`, `twine-exclude-newer`, `import-name`), or a row that asserts
+  the effect (`artifact-name` in the `test` job). `python-version` is set by the `test` job on every
+  version, and `uv-version` by every run (the default); an invalid value of these two fails before
+  any check runs and ends as `unexpected` (see below), so it is a manual check.
+- Assert the value or the format of the outputs (`assert_metadata`), never just print them.
 - Put assertions in `scripts/test-helper.sh`, not in the workflow, so the local and the released run
   share them.
 - Failure-path fixtures must assert that the action fails for the expected reason, not just that
@@ -204,6 +217,7 @@ Rules:
 
 ## Reporting
 
-- State which checks ran (`make lint`, `make format`, `make check-export`) and which did not.
+- State which checks ran (`make lint`, `make format`, `make check-export`, `make check-readme`) and
+  which did not.
 - Note that CI was not awaited, and that the workflow tests only run on GitHub.
 - Report failures that already exist on `main` rather than hiding them.

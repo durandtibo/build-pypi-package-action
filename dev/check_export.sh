@@ -7,7 +7,7 @@
 set -euo pipefail
 
 EXPECTED="LICENSE
-action.yml"
+action.yaml"
 
 actual=$(git archive --worktree-attributes HEAD | tar t | LC_ALL=C sort)
 expected=$(printf '%s\n' "$EXPECTED" | LC_ALL=C sort)

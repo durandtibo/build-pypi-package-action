@@ -45,6 +45,12 @@ jobs:
     permissions:
       contents: read
 
+  # Check that the README documents the inputs and outputs of action.yaml
+  readme:
+    uses: ./.github/workflows/ci-readme.yaml
+    permissions:
+      contents: read
+
   # Test the action from the current repository code (not released yet) on multiple OS and Python versions
   action:
     needs: get-matrix

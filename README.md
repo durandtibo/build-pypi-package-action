@@ -302,17 +302,17 @@ The action can only be exercised end to end on GitHub Actions; there is no local
   `durandtibo/workflow-config-action` (every OS, Linux, macOS and Windows, and every standard Python
   version): the `test` job builds the fixture package, checks the outputs and checks that the uploaded
   artifact holds only the wheel and the sdist. **Edge cases** run on one runner: the case tables of
-  `test/cases.json`, `accept` (packages that must build) and `reject` (packages that must fail,
-  with the
-  `failed-check` id that the failure must carry). A new case is a new row in that one file;
+  `test/cases.json`, `accept` (packages that must build) and `reject` (packages that must fail, with
+  the `failed-check` id that the failure must carry). A new case is a new row in that one file;
   `scripts/load-cases.sh` turns it into the job matrices.
 - `reject-manual` only runs on `workflow_dispatch` and `reject-tag-mismatch` only when the workflow
-  is
-  run by hand on a tag ref (`gh workflow run ci.yaml --ref <tag>`), because a pull request job cannot
-  reproduce those triggers. All other jobs are skipped on a tag ref.
+  is run by hand on a tag ref (`gh workflow run ci.yaml --ref <tag>`), because a pull request job
+  cannot reproduce those triggers. All other jobs are skipped on a tag ref.
 - `.gitattributes` marks everything except `action.yaml` and `LICENSE` as `export-ignore`, so a release
   ships only what the action needs. `make check-export` (`ci-export.yaml`) checks the exported set,
   because `uses: ./` runs the whole checkout and would hide a missing file.
+- `make check-readme` (`ci-readme.yaml`) checks that the inputs, the outputs and the defaults in
+  this README are the ones declared in `action.yaml`.
 
 ### Workflows
 
@@ -324,6 +324,7 @@ Files in `.github/workflows/` are prefixed by role:
 | `ci-format.yaml`           | Checks formatting and lints shell and YAML files                                   |
 | `ci-action.yaml`           | Tests the unreleased action, or the last release, against the fixtures             |
 | `ci-export.yaml`           | Checks that a release ships only the files the action needs                        |
+| `ci-readme.yaml`           | Checks that the README documents the inputs and outputs of `action.yaml`           |
 | `ci-verify-workflows.yaml` | Lints the workflow files; separate triggers so it can be a required check          |
 | `lib-get-test-matrix.yaml` | Loads the OS and Python version matrices once                                      |
 | `nightly.yaml`             | Nightly tests of the last stable release (`ci-action.yaml` with `use-released`)    |
