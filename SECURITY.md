@@ -29,7 +29,7 @@ Instead, please report security vulnerabilities privately using
 Please include the following information in your report:
 
 - Type of issue (e.g., script injection, secret exposure, bypass of a release guard, etc.)
-- The affected step in `action.yml` or file in the repository
+- The affected step in `action.yaml` or file in the repository
 - The affected version (tag, branch or commit)
 - Any special configuration required to reproduce the issue (inputs, runner OS, event type)
 - Step-by-step instructions to reproduce the issue

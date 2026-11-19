@@ -4,10 +4,11 @@ Guidance for coding agents working in this repository.
 
 ## Repository purpose
 
-A GitHub composite action (`action.yml`) that builds a Python package (sdist + wheel) with
+A GitHub composite action (`action.yaml`) that builds a Python package (sdist + wheel) with
 `uv`, validates it (`twine check --strict`, version guards, PyPI duplicate check), smoke-tests
 the wheel, and uploads `dist/` (wheel and sdist only) as an artifact. It exposes the outputs
-`package-name` and `package-version` (read from the built wheel) and the diagnostic `failed-check`. All logic is inline in `action.yml`;
+`package-name` and `package-version` (read from the built wheel) and the diagnostic `failed-check`.
+All logic is inline in `action.yaml`;
 there is no separate script. `scripts/test-helper.sh` (assertions shared by the test jobs) and
 `scripts/load-cases.sh` (turns `test/cases.json` into job matrices), `test/fixtures/` (throwaway
 packages that the test workflows build) and `dev/check_export.sh` (maintainer check of the exported
@@ -39,7 +40,7 @@ README claims all three.
 - On conflicts with `main`, merge `origin/main` into the branch; do not rebase and force-push.
 - Update `README.md` when inputs, outputs, behaviour, or workflows change.
 
-## Action rules (`action.yml`)
+## Action rules (`action.yaml`)
 
 - Keep input and output names, defaults, and descriptions consistent with `README.md`. Renaming or
   removing an input or output is a breaking change and must be flagged.
@@ -64,10 +65,11 @@ README claims all three.
 - `uv` and `twine` are pinned by the defaults of the inputs `uv-version` and `twine-version`
   (used by steps 0.1 and 1.9). `twine-exclude-newer` defaults to empty (disabled); when set,
   `--exclude-newer` pins twine's dependencies and is scoped to twine, never to the package's own
-  build. Bump the two version defaults together (and the README table), deliberately, in their own PR with the quarterly review. Pinning actions does not
+  build. Bump the two version defaults together (and the README table), deliberately, in their own
+  PR with the quarterly review. Pinning actions does not
   cover them.
 - The default `python-version` (`3.14`) is bumped together with the workflow config.
-- Only ship what the action needs at runtime: files the action itself uses (`action.yml`,
+- Only ship what the action needs at runtime: files the action itself uses (`action.yaml`,
   `LICENSE`) are exported, and `.gitattributes` marks everything else `export-ignore`. When the
   action starts using a new file, un-ignore it there and add it to `EXPECTED` in
   `dev/check_export.sh`. Never make the action read tests, fixtures or other repo files that are not
@@ -116,7 +118,7 @@ Conventions:
 
 ## Tests
 
-- Tests are workflow-based: a new behaviour or guard in `action.yml` needs a fixture under
+- Tests are workflow-based: a new behaviour or guard in `action.yaml` needs a fixture under
   `test/fixtures/` (or an extra assertion) and a row in `test/cases.json`, the single file with the
   case tables (`accept`, `reject`, `reject-manual`, `reject-tag-mismatch`). A row has `"released":
 false` until the last release has the feature; the released run (`use-released: true`) loads only
@@ -152,7 +154,7 @@ This repository follows it: the action cases are the rows of `test/cases.json`, 
 Three levels:
 
 1. **Code**: each script or function, tested alone with mocks. This repository has no level 1: all
-   the logic is inline in `action.yml`, so it is tested only through the action (the README says so).
+   the logic is inline in `action.yaml`, so it is tested only through the action (the README says so).
    If logic moves to scripts, test them with bats and add a `ci-shell.yaml`.
 2. **Local action**: the action from this checkout (`uses: ./`) in a real workflow.
 3. **Released action**: the latest stable release (`uses: durandtibo/build-pypi-package-action@<sha>`),
@@ -188,7 +190,7 @@ Rules:
 - Check what is shipped: the exported set (`make check-export`) must contain every file the action
   needs, because `uses: ./` runs the whole checkout and hides a missing file.
 - Set `timeout-minutes`, `fail-fast: false` and `max-parallel` on matrix jobs.
-- Keep the README inputs and outputs in step with `action.yml`.
+- Keep the README inputs and outputs in step with `action.yaml`.
 
 ## Release procedure
 

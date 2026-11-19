@@ -11,12 +11,14 @@ workflow before a bad release can go out.
 
 Point it at a repo with a `pyproject.toml`, and it builds the distributions with
 `uv`, checks their metadata, verifies the version being built is actually safe to publish, smoke-tests
-the wheel in a clean environment, and uploads everything as a workflow artifact — ready for a publish step
+the wheel in a clean environment, and uploads everything as a workflow artifact — ready for a
+publish step
 right after it.
 
 ## Why use it
 
-Releasing a Python package to PyPI is unforgiving — you can't overwrite or delete a bad version once it's
+Releasing a Python package to PyPI is unforgiving — you can't overwrite or delete a bad version
+once it's
 up. This action exists to catch the usual ways that goes wrong _before_ the publish step runs:
 
 - A `workflow_dispatch` dry run accidentally targets a real release version instead of a pre-release.
@@ -31,7 +33,7 @@ If any of these are true, the action fails the job and nothing gets published.
 The action is a sequence of small steps, grouped by topic and numbered `N.x` in the log. Each step
 has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
-**0.x Setup**
+### 0.x Setup
 
 - `0.1` installs `uv` (version from `uv-version`) and the requested Python version
   ([`astral-sh/setup-uv`](https://github.com/astral-sh/setup-uv), without cache: a release build never
@@ -39,7 +41,7 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 - `0.2` defines the `fail` helper used by every later step. It records the id of the failed check
   and escapes the annotation text.
 
-**1.x Build and package checks**
+### 1.x Build and package checks
 
 - `1.1` builds the sdist and wheel into `dist/` with `uv build --clear --no-sources`, so stale files
   and `[tool.uv.sources]` overrides cannot change what is released (`build`).
@@ -62,7 +64,7 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
   local checks, because it needs a download. `twine` is pinned (`twine-version`), and so are its dependencies
   (`uvx --exclude-newer`) when `twine-exclude-newer` is set; it is disabled by default.
 
-**2.x Release guards**
+### 2.x Release guards
 
 - `2.1` fails on a local version such as `1.2.3+abc` (setuptools-scm on an untagged commit), which PyPI
   rejects (`local-version`).
@@ -77,24 +79,26 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
   published, and any other answer (network error, 429, 5xx) fails too because the check could not prove
   the version is free. It does not detect versions on other indexes (e.g. TestPyPI) (`published`).
 
-**3.x Smoke tests**
+### 3.x Smoke tests
 
 - `3.1` installs the wheel into a throwaway environment and imports that module in isolated mode
-  (`smoke-wheel`). There is no separate sdist test: `uv build` builds the wheel _from_ the sdist, so a
+  (`smoke-wheel`). There is no separate sdist test: `uv build` builds the wheel _from_ the sdist,
+  so a
   wheel that imports proves the sdist is complete and builds. The sdist is still checked for unwanted
   files (`1.6`) and size (`1.7`).
 - `3.2` loads every declared entry point (console scripts, plugins) from the installed wheel, so a typo
   in `[project.scripts]` fails here and not when a user runs the command (`entry-points`). An entry
   point that needs an optional dependency which is not installed fails this check too.
 
-**4.x Report and upload**
+### 4.x Report and upload
 
 - `4.3` runs only after a failure and publishes the `failed-check` output.
 - `4.1` writes the job summary; `4.2` uploads `dist/` (the wheel and the sdist, nothing else) as a
   workflow artifact, kept for 5 days. The upload fails if `dist/` is empty. The publish job can upload
   the downloaded directory as is.
 
-Every step is fail-closed: the first failing check stops the job, and nothing is uploaded after it. A
+Every step is fail-closed: the first failing check stops the job, and nothing is uploaded after it.
+A
 failure is reported as an annotation and in the job summary, in the form _what failed, why, how to
 fix_, with the values involved. The steps use `bash` and work on Linux, macOS, and Windows (Git Bash)
 runners.
@@ -192,7 +196,8 @@ and the job summary already say what failed and how to fix it. To read it after 
 
 ### End-to-end release workflow
 
-Use two jobs. The `build` job only needs `contents: read`; the `publish` job downloads the artifact and
+Use two jobs. The `build` job only needs `contents: read`; the `publish` job downloads the artifact
+and
 is the only one with `id-token: write` and the `pypi` environment, so the code that runs during the
 build never sees the OIDC token. The workflow runs on manual dispatch (dry run with a pre-release
 version) and on tag pushes (real release); only a tag push publishes. Publishing uses
@@ -239,7 +244,8 @@ jobs:
 
 Releases are tagged `vX.Y.Z` and are immutable. This repository does **not** publish floating tags:
 there is no `v0` major tag and no `latest` tag, so `@v0` does not resolve. Always reference a full
-release tag (`@v0.1.0`), or pin the full commit SHA of a release (as for any third-party action) for a
+release tag (`@v0.1.0`), or pin the full commit SHA of a release (as for any third-party action)
+for a
 reproducible build. Let your update bot bump it.
 
 ## Upgrading from v0.0.x
@@ -258,14 +264,15 @@ Breaking changes:
   entry point that cannot be loaded, a post release on a manual run, and any PyPI answer other than
   404 in the duplicate check (a PyPI outage now fails the job).
 - **The tag must be exactly `v` + the normalized version** (`v1.0.0rc1`, not `v1.0.0-rc1`).
-- **`smoke-sdist` and `artifact-mismatch` are removed.** `uv build` builds the wheel from the sdist, so
+- **`smoke-sdist` and `artifact-mismatch` are removed.** `uv build` builds the wheel from the
+  sdist, so
   neither could fail independently of the wheel checks.
 - New inputs `uv-version`, `twine-version` and `twine-exclude-newer` (defaults are the tested pins).
 - New output `failed-check` (an id, or `unexpected`); `twine` is pinned and the `uv` cache is disabled.
 
 ## Development
 
-The action is defined entirely in [`action.yml`](action.yml); there is no separate script. Use the
+The action is defined entirely in [`action.yaml`](action.yaml); there is no separate script. Use the
 `Makefile` (`make help` lists the targets):
 
 ```shell
@@ -295,13 +302,15 @@ The action can only be exercised end to end on GitHub Actions; there is no local
   `durandtibo/workflow-config-action` (every OS, Linux, macOS and Windows, and every standard Python
   version): the `test` job builds the fixture package, checks the outputs and checks that the uploaded
   artifact holds only the wheel and the sdist. **Edge cases** run on one runner: the case tables of
-  `test/cases.json`, `accept` (packages that must build) and `reject` (packages that must fail, with the
+  `test/cases.json`, `accept` (packages that must build) and `reject` (packages that must fail,
+  with the
   `failed-check` id that the failure must carry). A new case is a new row in that one file;
   `scripts/load-cases.sh` turns it into the job matrices.
-- `reject-manual` only runs on `workflow_dispatch` and `reject-tag-mismatch` only when the workflow is
+- `reject-manual` only runs on `workflow_dispatch` and `reject-tag-mismatch` only when the workflow
+  is
   run by hand on a tag ref (`gh workflow run ci.yaml --ref <tag>`), because a pull request job cannot
   reproduce those triggers. All other jobs are skipped on a tag ref.
-- `.gitattributes` marks everything except `action.yml` and `LICENSE` as `export-ignore`, so a release
+- `.gitattributes` marks everything except `action.yaml` and `LICENSE` as `export-ignore`, so a release
   ships only what the action needs. `make check-export` (`ci-export.yaml`) checks the exported set,
   because `uses: ./` runs the whole checkout and would hide a missing file.
 
