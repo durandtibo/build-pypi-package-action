@@ -158,7 +158,23 @@ jobs:
         shell: bash
         run: rm -rf dist
 
+      # The artifact service can answer "not found" for a moment after the upload is finalized
+      # (seen on macos-15), so the first download is retried once after a pause.
       - name: Download dist artifact
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # ratchet:actions/download-artifact@v8.0.2
+        with:
+          name: dist-${{ matrix.os }}-${{ matrix.python-version }}
+          path: dist/
+
+      - name: Wait before retrying the download
+        if: ${{ steps.download.outcome == 'failure' }}
+        shell: bash
+        run: sleep 20
+
+      - name: Download dist artifact (retry)
+        if: ${{ steps.download.outcome == 'failure' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # ratchet:actions/download-artifact@v8.0.2
         with:
           name: dist-${{ matrix.os }}-${{ matrix.python-version }}
