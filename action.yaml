@@ -40,6 +40,9 @@ outputs:
   package-version:
     description: Normalized version of the built wheel
     value: ${{ steps.inspect.outputs.version }}
+  hashes:
+    description: Base64 of the sha256sum lines of the sdist and the wheel, the base64-subjects input of the SLSA generic generator
+    value: ${{ steps.hashes.outputs.hashes }}
   # Diagnostic, set by the last step: the id passed to fail, or "unexpected" when
   # a step outside the checks failed (setup, upload).
   failed-check:
@@ -229,6 +232,17 @@ runs:
           fail twine "Invalid package metadata" \
             "twine check --strict rejected the metadata (output above); PyPI would reject or misrender it." \
             "Fix the readme, description or classifiers named above; run uvx twine check --strict dist/* locally."
+
+    # Subjects for SLSA provenance (slsa-github-generator base64-subjects): the
+    # sha256sum lines of the files in dist/, base64 on one line. sha256sum or
+    # shasum (macOS) and base64 | tr (no GNU -w0) keep it portable.
+    - name: 1.10 Compute hashes
+      id: hashes
+      shell: bash
+      working-directory: dist
+      run: |
+        if command -v sha256sum > /dev/null; then sums=$(sha256sum ./*.tar.gz ./*.whl); else sums=$(shasum -a 256 ./*.tar.gz ./*.whl); fi
+        echo "hashes=$(printf '%s\n' "${sums}" | base64 | tr -d '\n')" >> "$GITHUB_OUTPUT"
 
     # ---- 2.x Release guards -------------------------------------------------
     # PyPI rejects local versions ("1.2.3+abc"), typical of setuptools-scm on
