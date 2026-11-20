@@ -92,6 +92,7 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 
 ### 4.x Report and upload
 
+- `1.10` computes the `hashes` output from `dist/`.
 - `4.3` runs only after a failure and publishes the `failed-check` output.
 - `4.1` writes the job summary; `4.2` uploads `dist/` (the wheel and the sdist, nothing else) as a
   workflow artifact, kept for 5 days. The upload fails if `dist/` is empty. The publish job can upload
@@ -145,6 +146,7 @@ other versions, so run your own test matrix separately.
 | ----------------- | ----------------------------------------------------------------------------------------- |
 | `package-name`    | `Name` field of the built wheel's metadata (exact spelling of the build backend).         |
 | `package-version` | Normalized version of the built wheel.                                                    |
+| `hashes`          | Base64 of the `sha256sum` lines of the sdist and the wheel (SLSA `base64-subjects`).      |
 | `failed-check`    | Diagnostic: id of the failed check, `unexpected` for any other failure; empty on success. |
 
 `package-name` and `package-version` are read from the built wheel, so they are what gets uploaded,
@@ -183,6 +185,31 @@ and the job summary already say what failed and how to fix it. To read it after 
     PACKAGE_NAME: ${{ steps.build.outputs.package-name }}
     PACKAGE_VERSION: ${{ steps.build.outputs.package-version }}
   run: echo "${PACKAGE_NAME} ${PACKAGE_VERSION}"
+```
+
+### SLSA provenance
+
+`hashes` is the input `base64-subjects` of the SLSA generic generator:
+
+```yaml
+jobs:
+  build:
+    outputs:
+      hashes: ${{ steps.build.outputs.hashes }}
+    steps:
+      - id: build
+        uses: durandtibo/build-pypi-package-action@v0.1.0
+
+  provenance:
+    needs: build
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.build.outputs.hashes }}
+      upload-assets: true
 ```
 
 ### Custom artifact name

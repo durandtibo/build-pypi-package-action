@@ -137,6 +137,16 @@ jobs:
           source scripts/test-helper.sh
           assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
 
+      # Not in the last release yet: skipped by the released run until it has the output.
+      - name: Assert hashes output
+        if: ${{ !inputs.use-released }}
+        shell: bash
+        env:
+          HASHES: ${{ steps.local.outputs.hashes }}
+        run: |
+          source scripts/test-helper.sh
+          assert_hashes "${HASHES}"
+
       - name: Assert dist/ was built
         shell: bash
         run: |

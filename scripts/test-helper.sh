@@ -18,6 +18,21 @@ assert_metadata() {
 	}
 }
 
+# assert_hashes <hashes>
+# The hashes output is the base64 of one "<sha256>  ./<file>" line per file of dist/ (sdist, wheel).
+assert_hashes() {
+	local decoded
+	decoded=$(printf '%s' "$1" | base64 --decode) || {
+		echo "::error::hashes output is not valid base64: $1"
+		return 1
+	}
+	[[ "$(printf '%s\n' "${decoded}" | grep -cE '^[0-9a-f]{64}  \./')" -eq 2 ]] &&
+		[[ "${decoded}" == *.tar.gz* && "${decoded}" == *.whl* ]] || {
+		echo "::error::unexpected hashes output: ${decoded}"
+		return 1
+	}
+}
+
 # assert_dist_built
 # The action built one wheel and one sdist.
 assert_dist_built() {
