@@ -33,14 +33,22 @@ assert_hashes() {
 	}
 }
 
-# assert_dist_built
-# The action built one wheel and one sdist.
+# assert_dist_built [checksum-file]
+# The action built one wheel and one sdist; dist/SHA256SUMS exists only when checksum-file is "true",
+# and then it must verify the files.
 assert_dist_built() {
 	ls dist/*.whl dist/*.tar.gz
-	test ! -e dist/SHA256SUMS || {
-		echo "::error::dist/SHA256SUMS exists, but the action no longer writes checksums"
-		exit 1
-	}
+	if [[ "${1:-false}" == "true" ]]; then
+		(cd dist && { sha256sum --check SHA256SUMS 2>/dev/null || shasum -a 256 --check SHA256SUMS; }) || {
+			echo "::error::dist/SHA256SUMS is missing or does not match the files"
+			return 1
+		}
+	else
+		test ! -e dist/SHA256SUMS || {
+			echo "::error::dist/SHA256SUMS exists, but checksum-file is not set"
+			return 1
+		}
+	fi
 }
 
 # assert_stale_dist_cleared

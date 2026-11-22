@@ -14,6 +14,12 @@ inputs:
     description: Name of the uploaded distribution artifact
     required: false
     default: "dist"
+  checksum-file:
+    description: >-
+      Set to "true" to upload a SHA256SUMS file with the wheel and the sdist (remove it after
+      verifying it, before a publish step that uploads every file of dist/)
+    required: false
+    default: "false"
   import-name:
     description: Module imported by the smoke test (default is resolved from the wheel; the action fails if that is ambiguous)
     required: false
@@ -65,7 +71,7 @@ runs:
 
     # Composite steps cannot share shell functions, so write the failure helper
     # once. fail <check-id> <title> <what happened and why> <how to fix>
-    # The id goes to a file read by step 4.3, so a check needs no output
+    # The id goes to a file read by step 4.4, so a check needs no output
     # declaration. rm -f: a second use of the action in the same job must not
     # read a stale id. Annotation text escapes % and line breaks (file names
     # reach the message).
@@ -245,6 +251,7 @@ runs:
       run: |
         if command -v sha256sum > /dev/null; then sums=$(sha256sum ./*.tar.gz ./*.whl); else sums=$(shasum -a 256 ./*.tar.gz ./*.whl); fi
         sums=$(printf '%s\n' "${sums}" | sed 's/^\([0-9a-f]\{64\}\) \*/\1  /')
+        printf '%s\n' "${sums}" > "${RUNNER_TEMP}/SHA256SUMS"
         echo "hashes=$(printf '%s\n' "${sums}" | base64 | tr -d '\n')" >> "$GITHUB_OUTPUT"
 
     # ---- 2.x Release guards -------------------------------------------------
@@ -353,7 +360,13 @@ runs:
         printf '### :white_check_mark: %s %s\n\nBuilt and checked: %s\n' \
           "${NAME}" "${VERSION}" "$(ls dist | tr '\n' ' ')" >> "$GITHUB_STEP_SUMMARY"
 
-    - name: 4.2 Upload distributions
+    # Same lines as the hashes output; checked with: cd dist && sha256sum --check SHA256SUMS
+    - name: 4.2 Add SHA256SUMS to dist/
+      if: ${{ inputs.checksum-file == 'true' }}
+      shell: bash
+      run: cp "${RUNNER_TEMP}/SHA256SUMS" dist/SHA256SUMS
+
+    - name: 4.3 Upload distributions
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # ratchet:actions/upload-artifact@v7.0.2
       with:
         name: ${{ inputs.artifact-name }}
@@ -364,7 +377,7 @@ runs:
 
     # Last step, runs only when a step above failed. The id written by fail, or
     # "unexpected" when the failure did not come from a check.
-    - name: 4.3 Report failed check
+    - name: 4.4 Report failed check
       id: report
       if: failure()
       shell: bash

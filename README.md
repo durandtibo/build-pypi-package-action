@@ -93,10 +93,11 @@ has one purpose and one `failed-check` id (see [Outputs](#outputs)).
 ### 4.x Report and upload
 
 - `1.10` computes the `hashes` output from `dist/`.
-- `4.3` runs only after a failure and publishes the `failed-check` output.
-- `4.1` writes the job summary; `4.2` uploads `dist/` (the wheel and the sdist, nothing else) as a
-  workflow artifact, kept for 5 days. The upload fails if `dist/` is empty. The publish job can upload
-  the downloaded directory as is.
+- `4.4` runs only after a failure and publishes the `failed-check` output.
+- `4.1` writes the job summary; `4.2` adds `SHA256SUMS` when `checksum-file` is `true`; `4.3`
+  uploads `dist/` (the wheel and the sdist, plus `SHA256SUMS` if requested) as a workflow artifact,
+  kept for 5 days. The upload fails if `dist/` is empty. By default the publish job can upload the
+  downloaded directory as is.
 
 Every step is fail-closed: the first failing check stops the job, and nothing is uploaded after it.
 A
@@ -127,6 +128,7 @@ The calling repo must provide, at its root:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------- |
 | `python-version`      | Python version used to build and smoke-test the package.                                                            | No       | `3.14`                  |
 | `artifact-name`       | Name of the uploaded distribution artifact.                                                                         | No       | `dist`                  |
+| `checksum-file`       | `true` to upload a `SHA256SUMS` file with the wheel and the sdist (see below).                                      | No       | `false`                 |
 | `import-name`         | Module imported by the smoke test (e.g. `yaml` for `pyyaml`).                                                       | No       | resolved from the wheel |
 | `uv-version`          | Version of `uv` to install.                                                                                         | No       | `0.13.7`                |
 | `twine-version`       | Version of `twine` used by `twine check`.                                                                           | No       | `7.0.0`                 |
@@ -136,6 +138,14 @@ The calling repo must provide, at its root:
 reproducible. Override them to use other versions. `twine-exclude-newer` is empty by default, so
 `twine`'s dependencies are not pinned by date; set a date to pin them. A `twine-version` published
 after that date cannot be resolved: move the date forward or clear it.
+
+With `checksum-file: true`, `dist/` and the artifact also hold `SHA256SUMS` (the lines of the `hashes`
+output). A publish job verifies the downloaded files, then removes the file, because
+`pypa/gh-action-pypi-publish` uploads every file of `dist/`:
+
+```bash
+cd dist && sha256sum --check SHA256SUMS && rm SHA256SUMS
+```
 
 The `python-version` is used for the build and for the smoke test; the package is not tested against
 other versions, so run your own test matrix separately.
@@ -279,8 +289,8 @@ reproducible build. Let your update bot bump it.
 
 Breaking changes:
 
-- **`SHA256SUMS` is gone.** The artifact holds exactly the wheel and the sdist. If a release job needs
-  checksums, compute them there.
+- **`SHA256SUMS` is off by default.** The artifact holds exactly the wheel and the sdist. Set
+  `checksum-file: true` to upload it again (remove it before publishing).
 - **`package-name` is read from the built wheel** (the exact `Name` field), not from `pyproject.toml`.
 - **The module name no longer has to match the distribution name.** It is resolved from the wheel, or
   set with the new `import-name` input. The resolution fails closed: a wheel with several unrelated
