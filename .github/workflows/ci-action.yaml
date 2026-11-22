@@ -3,7 +3,7 @@
 #   - use-released: false (ci.yaml): the action from this checkout (`uses: ./`), i.e. the
 #     version that is not released yet, and every row of test/cases.json;
 #   - use-released: true (nightly.yaml): the last stable release
-#     (durandtibo/build-pypi-package-action@v0.1.0), and only the rows marked "released": true.
+#     (durandtibo/build-pypi-package-action@v0.1.1), and only the rows marked "released": true.
 # Each job has two action steps, `local` and `released`, guarded by `if`, and one verify step
 # that reads `steps.local.outputs.x || steps.released.outputs.x`.
 # Update the version in this header and in the `uses:` refs below when a new version is
@@ -123,7 +123,7 @@ jobs:
       - name: Run build-package action (released)
         id: released
         if: ${{ inputs.use-released }}
-        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
+        uses: durandtibo/build-pypi-package-action@3798f1bb652012437d4ee7ceb5de007d15adba6a # ratchet:durandtibo/build-pypi-package-action@v0.1.1
         with:
           python-version: ${{ matrix.python-version }}
           artifact-name: dist-${{ matrix.os }}-${{ matrix.python-version }}
@@ -137,12 +137,10 @@ jobs:
           source scripts/test-helper.sh
           assert_metadata "${PACKAGE_NAME}" "${PACKAGE_VERSION}" "pypi-release-action-fixture" "0.0.1a1"
 
-      # Not in the last release yet: skipped by the released run until it has the output.
       - name: Assert hashes output
-        if: ${{ !inputs.use-released }}
         shell: bash
         env:
-          HASHES: ${{ steps.local.outputs.hashes }}
+          HASHES: ${{ steps.local.outputs.hashes || steps.released.outputs.hashes }}
         run: |
           source scripts/test-helper.sh
           assert_hashes "${HASHES}"
@@ -267,7 +265,7 @@ jobs:
       - name: Run build-package action (released)
         id: released
         if: ${{ inputs.use-released }}
-        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
+        uses: durandtibo/build-pypi-package-action@3798f1bb652012437d4ee7ceb5de007d15adba6a # ratchet:durandtibo/build-pypi-package-action@v0.1.1
         with:
           import-name: ${{ matrix.import-name }}
           artifact-name: dist-accept-${{ matrix.case }}
@@ -348,7 +346,7 @@ jobs:
         id: released
         if: ${{ inputs.use-released }}
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
+        uses: durandtibo/build-pypi-package-action@3798f1bb652012437d4ee7ceb5de007d15adba6a # ratchet:durandtibo/build-pypi-package-action@v0.1.1
         with:
           import-name: ${{ matrix.import-name }}
           twine-version: ${{ matrix.twine-version || '7.0.0' }}
@@ -402,7 +400,7 @@ jobs:
         id: released
         if: ${{ inputs.use-released }}
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
+        uses: durandtibo/build-pypi-package-action@3798f1bb652012437d4ee7ceb5de007d15adba6a # ratchet:durandtibo/build-pypi-package-action@v0.1.1
 
       - name: Assert build-package action failed for the expected reason
         shell: bash
@@ -442,7 +440,7 @@ jobs:
       - name: Run build-package action (released)
         id: released
         if: ${{ inputs.use-released }}
-        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
+        uses: durandtibo/build-pypi-package-action@3798f1bb652012437d4ee7ceb5de007d15adba6a # ratchet:durandtibo/build-pypi-package-action@v0.1.1
         with:
           artifact-name: dist-accept-plain-version
 
@@ -497,7 +495,7 @@ jobs:
         id: released
         if: ${{ inputs.use-released }}
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@239defb64fe09080292442db058bddd02f498eb3 # ratchet:durandtibo/build-pypi-package-action@v0.1.0
+        uses: durandtibo/build-pypi-package-action@3798f1bb652012437d4ee7ceb5de007d15adba6a # ratchet:durandtibo/build-pypi-package-action@v0.1.1
 
       - name: Assert build-package action failed for the expected reason
         shell: bash
