@@ -19,7 +19,8 @@
 #     schedule;
 #   - edge cases, on one runner: accept (packages that must build), reject, reject-manual,
 #     reject-tag-mismatch (packages that must be rejected, with the failed-check id that the
-#     rejection must carry), accept-plain-version-outside-manual-run, and test-export (the
+#     rejection must carry), test-sign-compat (the artifact is accepted by sign-pypi-package-action),
+#     accept-plain-version-outside-manual-run, and test-export (the
 #     action run from the exported archive, i.e. what a release ships).
 # A new case is a new row in test/cases.json, not a new job.
 # Safe to run on every push/PR: no publishing or signing.
@@ -297,6 +298,48 @@ jobs:
         run: |
           source scripts/test-helper.sh
           assert_stale_dist_cleared
+
+  # The SHA256SUMS file must be accepted by durandtibo/sign-pypi-package-action (its steps 1.2 to
+  # 1.4: tag, file name format, file set, checksums). Signing and releasing have side effects, so
+  # the job has no `id-token: write`: the signer passes its checksum checks, then stops at its
+  # permission check (failed-check `permissions`). Any other id means that it rejected the artifact.
+  # Only the code of this checkout is concerned: the last release still writes `./` prefixes.
+  test-sign-compat:
+    name: test-sign-compat
+    if: ${{ !inputs.use-released && github.ref_type != 'tag' }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+
+      - name: Stage fixture package at repo root
+        shell: bash
+        run: cp -r test/fixtures/pkg/. .
+
+      - name: Run build-package action (local)
+        uses: ./
+        with:
+          checksum-file: "true"
+          artifact-name: dist-sign-compat
+
+      - name: Run sign-pypi-package-action
+        id: sign
+        continue-on-error: true
+        uses: durandtibo/sign-pypi-package-action@0add3d41c042f2c855d4ac39bfd51e57987ca8fe # ratchet:durandtibo/sign-pypi-package-action@v0.1.1
+        with:
+          tag-name: sign-compat-test
+          dist-artifact-name: dist-sign-compat
+
+      - name: Assert the signer accepted the checksums
+        shell: bash
+        env:
+          FAILED_CHECK: ${{ steps.sign.outputs.failed-check }}
+        run: |
+          source scripts/test-helper.sh
+          assert_failed_check permissions "${FAILED_CHECK}"
 
   # Edge cases, packages that must be rejected. `expected` is the failed-check id of the check that
   # must fail. The checks do not depend on the OS, so one runner is enough. The rows that set
