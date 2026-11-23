@@ -43,6 +43,13 @@ assert_dist_built() {
 			echo "::error::dist/SHA256SUMS is missing or does not match the files"
 			return 1
 		}
+		# The signer (sign-pypi-package-action) accepts only plain file names, no ./ prefix.
+		local bad
+		bad=$(grep -vE '^[0-9a-f]{64} [ *][A-Za-z0-9][A-Za-z0-9._+-]*\.(tar\.gz|whl)$' dist/SHA256SUMS || true)
+		test -z "${bad}" || {
+			echo "::error::dist/SHA256SUMS has lines the signer rejects: ${bad}"
+			return 1
+		}
 	else
 		test ! -e dist/SHA256SUMS || {
 			echo "::error::dist/SHA256SUMS exists, but checksum-file is not set"
