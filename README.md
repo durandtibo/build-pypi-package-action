@@ -178,7 +178,7 @@ and the job summary already say what failed and how to fix it. To read it after 
 - uses: actions/checkout@v7
 
 - name: Build package
-  uses: durandtibo/build-pypi-package-action@v0.1.1
+  uses: durandtibo/build-pypi-package-action@v0.1.2
   with:
     python-version: "3.14"
 ```
@@ -188,7 +188,7 @@ and the job summary already say what failed and how to fix it. To read it after 
 ```yaml
 - name: Build package
   id: build
-  uses: durandtibo/build-pypi-package-action@v0.1.1
+  uses: durandtibo/build-pypi-package-action@v0.1.2
 
 - name: Show package metadata
   env:
@@ -208,7 +208,7 @@ jobs:
       hashes: ${{ steps.build.outputs.hashes }}
     steps:
       - id: build
-        uses: durandtibo/build-pypi-package-action@v0.1.1
+        uses: durandtibo/build-pypi-package-action@v0.1.2
 
   provenance:
     needs: build
@@ -226,7 +226,7 @@ jobs:
 
 ```yaml
 - name: Build package
-  uses: durandtibo/build-pypi-package-action@v0.1.1
+  uses: durandtibo/build-pypi-package-action@v0.1.2
   with:
     artifact-name: my-package-dist
 ```
@@ -260,7 +260,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: durandtibo/build-pypi-package-action@v0.1.1 # or pin the commit SHA
+      - uses: durandtibo/build-pypi-package-action@v0.1.2 # or pin the commit SHA
 
   publish:
     needs: build
@@ -281,7 +281,7 @@ jobs:
 
 Releases are tagged `vX.Y.Z` and are immutable. This repository does **not** publish floating tags:
 there is no `v0` major tag and no `latest` tag, so `@v0` does not resolve. Always reference a full
-release tag (`@v0.1.1`), or pin the full commit SHA of a release (as for any third-party action)
+release tag (`@v0.1.2`), or pin the full commit SHA of a release (as for any third-party action)
 for a
 reproducible build. Let your update bot bump it.
 
