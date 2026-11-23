@@ -149,7 +149,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_dist_built
+          assert_dist_built false
 
       # Replace the local dist/ with the uploaded artifact: it is what a publish job downloads.
       - name: Remove the local dist/
@@ -260,6 +260,7 @@ jobs:
         uses: ./
         with:
           import-name: ${{ matrix.import-name }}
+          checksum-file: ${{ matrix.checksum-file || 'false' }}
           artifact-name: dist-accept-${{ matrix.case }}
 
       - name: Run build-package action (released)
@@ -283,9 +284,11 @@ jobs:
 
       - name: Assert dist/ was built
         shell: bash
+        env:
+          CHECKSUM_FILE: ${{ matrix.checksum-file || 'false' }}
         run: |
           source scripts/test-helper.sh
-          assert_dist_built
+          assert_dist_built "${CHECKSUM_FILE}"
 
       # dist/ content from a previous build must never leak into the artifact.
       - name: Assert stale files are gone
@@ -457,7 +460,7 @@ jobs:
         shell: bash
         run: |
           source scripts/test-helper.sh
-          assert_dist_built
+          assert_dist_built false
 
   # The tag must be exactly v + the package version (v0.0.1a1 for the fixture). Only exercised on a tag ref other
   # than that one.

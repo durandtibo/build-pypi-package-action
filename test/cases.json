@@ -1,6 +1,14 @@
 {
   "accept": [
     {
+      "case": "checksum-file",
+      "fixture": "pkg",
+      "name": "pypi-release-action-fixture",
+      "version": "0.0.1a1",
+      "checksum-file": "true",
+      "released": false
+    },
+    {
       "case": "dotted-name",
       "fixture": "pkg-dotted-name",
       "name": "pypi.release-action.fixture",

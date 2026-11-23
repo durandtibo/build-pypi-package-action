@@ -61,7 +61,7 @@ claimed.
 - Add a comment above a step when its purpose is not obvious.
 - Steps are small (one purpose, one failure id, about 15 lines), named `N.x` by topic (`0.x` setup,
   `1.x` build and package checks, `2.x` release guards, `3.x` smoke tests, `4.x` report and upload).
-  A step that can fail calls `fail <id> <title> <what> <how to fix>` (defined in step 0.2); step 4.3
+  A step that can fail calls `fail <id> <title> <what> <how to fix>` (defined in step 0.2); step 4.4
   publishes the id as the `failed-check` output (`unexpected` if no check failed), so there is no
   second place to edit. Give a step an `id:` only when a later step reads its outputs.
   Failure messages say what failed, why, and how to fix, with the values involved.
@@ -176,7 +176,7 @@ false` until the last release has the feature; the released run (`use-released: 
 - A case that needs a feature that the last release lacks (`failed-check`, ...) has
   `"released": false` and reaches the released run after the release that contains the feature.
 - `unexpected` has no row: its only trigger is an invalid input. Check it by hand after changing step
-  4.3: run the action with `python-version: "9.9"` and `continue-on-error: true` and read
+  4.4: run the action with `python-version: "9.9"` and `continue-on-error: true` and read
   `failed-check`.
 - Every guard has a fixture row, except a closed list of review-only exceptions: `dist-contents`
   (no sane backend writes a second wheel) and the `published` check when PyPI is down (non-404
