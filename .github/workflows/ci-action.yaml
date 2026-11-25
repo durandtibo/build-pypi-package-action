@@ -270,6 +270,7 @@ jobs:
         uses: durandtibo/build-pypi-package-action@1f41417b6df6af42e13f58142f34261d6a490d0b # ratchet:durandtibo/build-pypi-package-action@v0.1.3
         with:
           import-name: ${{ matrix.import-name }}
+          checksum-file: ${{ matrix.checksum-file || 'false' }}
           artifact-name: dist-accept-${{ matrix.case }}
 
       - name: Assert extracted metadata matches the fixture
