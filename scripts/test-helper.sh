@@ -19,14 +19,16 @@ assert_metadata() {
 }
 
 # assert_hashes <hashes>
-# The hashes output is the base64 of one "<sha256>  ./<file>" line per file of dist/ (sdist, wheel).
+# The hashes output is the base64 of one "<sha256>  <file>" line per file of dist/ (sdist, wheel).
+# The "./" prefix is accepted because the last release still writes it; the plain names of the
+# current action are checked on SHA256SUMS (same lines) by assert_dist_built.
 assert_hashes() {
 	local decoded
 	decoded=$(printf '%s' "$1" | base64 --decode) || {
 		echo "::error::hashes output is not valid base64: $1"
 		return 1
 	}
-	[[ "$(printf '%s\n' "${decoded}" | grep -cE '^[0-9a-f]{64}  \./')" -eq 2 ]] &&
+	[[ "$(printf '%s\n' "${decoded}" | grep -cE '^[0-9a-f]{64}  (\./)?[A-Za-z0-9]')" -eq 2 ]] &&
 		[[ "${decoded}" == *.tar.gz* && "${decoded}" == *.whl* ]] || {
 		echo "::error::unexpected hashes output: ${decoded}"
 		return 1
@@ -41,6 +43,13 @@ assert_dist_built() {
 	if [[ "${1:?checksum-file (true or false) required}" == "true" ]]; then
 		(cd dist && { sha256sum --check SHA256SUMS 2>/dev/null || shasum -a 256 --check SHA256SUMS; }) || {
 			echo "::error::dist/SHA256SUMS is missing or does not match the files"
+			return 1
+		}
+		# The signer (sign-pypi-package-action) accepts only plain file names, no ./ prefix.
+		local bad
+		bad=$(grep -vE '^[0-9a-f]{64} [ *][A-Za-z0-9][A-Za-z0-9._+-]*\.(tar\.gz|whl)$' dist/SHA256SUMS || true)
+		test -z "${bad}" || {
+			echo "::error::dist/SHA256SUMS has lines the signer rejects: ${bad}"
 			return 1
 		}
 	else
