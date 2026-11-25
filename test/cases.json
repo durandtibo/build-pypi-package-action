@@ -6,7 +6,7 @@
       "name": "pypi-release-action-fixture",
       "version": "0.0.1a1",
       "checksum-file": "true",
-      "released": false
+      "released": true
     },
     {
       "case": "dotted-name",

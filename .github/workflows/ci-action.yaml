@@ -3,7 +3,7 @@
 #   - use-released: false (ci.yaml): the action from this checkout (`uses: ./`), i.e. the
 #     version that is not released yet, and every row of test/cases.json;
 #   - use-released: true (nightly.yaml): the last stable release
-#     (durandtibo/build-pypi-package-action@v0.1.2), and only the rows marked "released": true.
+#     (durandtibo/build-pypi-package-action@v0.1.3), and only the rows marked "released": true.
 # Each job has two action steps, `local` and `released`, guarded by `if`, and one verify step
 # that reads `steps.local.outputs.x || steps.released.outputs.x`.
 # Update the version in this header and in the `uses:` refs below when a new version is
@@ -124,7 +124,7 @@ jobs:
       - name: Run build-package action (released)
         id: released
         if: ${{ inputs.use-released }}
-        uses: durandtibo/build-pypi-package-action@ade1f9b224bd9bb90b4f551dfe3abbb1409f3782 # ratchet:durandtibo/build-pypi-package-action@v0.1.2
+        uses: durandtibo/build-pypi-package-action@1f41417b6df6af42e13f58142f34261d6a490d0b # ratchet:durandtibo/build-pypi-package-action@v0.1.3
         with:
           python-version: ${{ matrix.python-version }}
           artifact-name: dist-${{ matrix.os }}-${{ matrix.python-version }}
@@ -267,7 +267,7 @@ jobs:
       - name: Run build-package action (released)
         id: released
         if: ${{ inputs.use-released }}
-        uses: durandtibo/build-pypi-package-action@ade1f9b224bd9bb90b4f551dfe3abbb1409f3782 # ratchet:durandtibo/build-pypi-package-action@v0.1.2
+        uses: durandtibo/build-pypi-package-action@1f41417b6df6af42e13f58142f34261d6a490d0b # ratchet:durandtibo/build-pypi-package-action@v0.1.3
         with:
           import-name: ${{ matrix.import-name }}
           artifact-name: dist-accept-${{ matrix.case }}
@@ -414,7 +414,7 @@ jobs:
         id: released
         if: ${{ inputs.use-released }}
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@ade1f9b224bd9bb90b4f551dfe3abbb1409f3782 # ratchet:durandtibo/build-pypi-package-action@v0.1.2
+        uses: durandtibo/build-pypi-package-action@1f41417b6df6af42e13f58142f34261d6a490d0b # ratchet:durandtibo/build-pypi-package-action@v0.1.3
         with:
           import-name: ${{ matrix.import-name }}
           twine-version: ${{ matrix.twine-version || '7.0.0' }}
@@ -468,7 +468,7 @@ jobs:
         id: released
         if: ${{ inputs.use-released }}
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@ade1f9b224bd9bb90b4f551dfe3abbb1409f3782 # ratchet:durandtibo/build-pypi-package-action@v0.1.2
+        uses: durandtibo/build-pypi-package-action@1f41417b6df6af42e13f58142f34261d6a490d0b # ratchet:durandtibo/build-pypi-package-action@v0.1.3
 
       - name: Assert build-package action failed for the expected reason
         shell: bash
@@ -508,7 +508,7 @@ jobs:
       - name: Run build-package action (released)
         id: released
         if: ${{ inputs.use-released }}
-        uses: durandtibo/build-pypi-package-action@ade1f9b224bd9bb90b4f551dfe3abbb1409f3782 # ratchet:durandtibo/build-pypi-package-action@v0.1.2
+        uses: durandtibo/build-pypi-package-action@1f41417b6df6af42e13f58142f34261d6a490d0b # ratchet:durandtibo/build-pypi-package-action@v0.1.3
         with:
           artifact-name: dist-accept-plain-version
 
@@ -563,7 +563,7 @@ jobs:
         id: released
         if: ${{ inputs.use-released }}
         continue-on-error: true
-        uses: durandtibo/build-pypi-package-action@ade1f9b224bd9bb90b4f551dfe3abbb1409f3782 # ratchet:durandtibo/build-pypi-package-action@v0.1.2
+        uses: durandtibo/build-pypi-package-action@1f41417b6df6af42e13f58142f34261d6a490d0b # ratchet:durandtibo/build-pypi-package-action@v0.1.3
 
       - name: Assert build-package action failed for the expected reason
         shell: bash
